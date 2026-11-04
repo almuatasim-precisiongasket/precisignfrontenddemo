@@ -4,7 +4,7 @@ dist
 .aistudio
 tasks/evidence
 server
-data
+/data/
 backups
 *.sqlite
 *.sqlite-wal
