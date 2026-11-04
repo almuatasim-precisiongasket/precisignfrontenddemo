@@ -1,0 +1,51 @@
+{
+  "name": "react-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24.11.0 <25"
+  },
+  "scripts": {
+    "dev": "vite --port=3000 --host=0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview",
+    "clean": "rm -rf dist server.js",
+    "lint": "tsc --noEmit",
+    "start": "tsx server/index.ts",
+    "backup": "tsx server/backup.ts",
+    "restore": "tsx server/backup.ts restore",
+    "test:startup": "tsx --test server/startup.test.ts",
+    "test:backup": "tsx --test server/backup.test.ts",
+    "dev:server": "tsx server/index.ts",
+    "provision:user": "tsx server/provision-user.ts",
+    "import:workflow": "tsx server/import-workflow.ts",
+    "test:server": "tsx --test server/server.test.ts server/reads.test.ts server/requests.test.ts server/requests.boundaries.test.ts server/drafts.test.ts server/profile.test.ts server/workflows.test.ts",
+    "test:document": "tsx --test src/components/document/AdminWorkRequestDocument.test.ts",
+    "test:api": "tsx --test src/services/apiRepository.test.ts src/services/apiSession.test.ts src/services/draftCoordinator.test.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^2.4.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^6.1.1",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "pdf-lib": "1.17",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "sharp": "^0.35.5",
+    "vite": "^8.3.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "autoprefixer": "^10.4.21",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.21.0",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'IBM Plex Sans', 'Inter', system-ui, -apple-system, sans-serif;
+    color: #192B3C;
+    background-color: #F5F6F8;
+  }
+}
+
+/* Print Styles for A4 official form */
+@media print {
+  html,
+  body {
+    background: white !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide application chrome: sidebar, top app header, controls, buttons, toolbars */
+  .app-sidebar,
+  .app-header,
+  .no-print,
+  button {
+    display: none !important;
+  }
+
+  /* Unconstrain main containers so print flow is natural */
+  #root,
+  .min-h-screen,
+  main {
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  /* Printable area: clean unscaled container */
+  .printable-area {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    border: none !important;
+    box-shadow: none !important;
+    transform: none !important;
+    overflow: visible !important;
+  }
+
+  /* Official document sized to fit within A4 printable area (190mm on 210mm sheet with 10mm margins) */
+  .admin-work-document {
+    width: 100% !important;
+    max-width: 190mm !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: white !important;
+    box-sizing: border-box !important;
+    overflow: visible !important;
+  }
+
+  /* Page break rules for clean continuation */
+  .page-break-before {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  .avoid-page-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+}

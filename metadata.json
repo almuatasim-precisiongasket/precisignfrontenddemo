@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix PreciSign",
+  "description": "An interactive React platform for engineering document management, bilingual workflow approvals, and precise A4-ready digital signatures.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
