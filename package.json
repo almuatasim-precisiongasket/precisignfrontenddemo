@@ -22,7 +22,8 @@
     "import:workflow": "tsx server/import-workflow.ts",
     "test:server": "tsx --test server/server.test.ts server/reads.test.ts server/requests.test.ts server/requests.boundaries.test.ts server/drafts.test.ts server/profile.test.ts server/workflows.test.ts",
     "test:document": "tsx --test src/components/document/AdminWorkRequestDocument.test.ts",
-    "test:api": "tsx --test src/services/apiRepository.test.ts src/services/apiSession.test.ts src/services/draftCoordinator.test.ts"
+    "test:api": "tsx --test src/services/apiRepository.test.ts src/services/apiSession.test.ts src/services/draftCoordinator.test.ts",
+    "build:vercel": "node scripts/build-vercel.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

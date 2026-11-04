@@ -4,7 +4,7 @@ export function openDatabase(path: string) {
   const db = new DatabaseSync(path, { timeout: 5000 });
   db.exec('PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;');
   const version = (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
-  if (version > 3) { db.close(); throw new Error('Database schema is newer than this application.'); }
+  if (version > 4) { db.close(); throw new Error('Database schema is newer than this application.'); }
   if (version === 0) {
     try {
       db.exec(`BEGIN IMMEDIATE;
@@ -33,6 +33,10 @@ export function openDatabase(path: string) {
     try { db.exec(`BEGIN IMMEDIATE;
       CREATE TABLE IF NOT EXISTS route_administrators (user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE);
       PRAGMA user_version = 3; COMMIT;`); }
+    catch (error) { if (db.isTransaction) db.exec('ROLLBACK'); db.close(); throw error; }
+  }
+  if (version < 4) {
+    try { db.exec("BEGIN IMMEDIATE; UPDATE companies SET name='Insturmental Control Co Ltd' WHERE id='ICCL'; PRAGMA user_version=4; COMMIT;"); }
     catch (error) { if (db.isTransaction) db.exec('ROLLBACK'); db.close(); throw error; }
   }
   return db;

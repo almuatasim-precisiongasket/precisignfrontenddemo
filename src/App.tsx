@@ -94,6 +94,7 @@ export default function App() {
   if (import.meta.env.VITE_DATA_MODE && import.meta.env.VITE_DATA_MODE !== 'demo') return <div className="p-6 text-sm" role="alert">Invalid data mode. Check the application configuration.</div>;
   return (
     <AppProvider>
+      {import.meta.env.VITE_DEMO_NOTICE === 'true' && <p role="status" className="bg-teal-50 px-6 py-2 text-xs text-teal-900">Demo workspace · Changes stay in this browser. Use sample information only.</p>}
       <MainLayout />
     </AppProvider>
   );

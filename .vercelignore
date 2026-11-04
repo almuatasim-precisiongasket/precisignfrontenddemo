@@ -1,0 +1,14 @@
+node_modules
+dist
+.git
+.aistudio
+tasks/evidence
+server
+data
+backups
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.partial
+.env*
+!.env.example

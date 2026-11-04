@@ -41,7 +41,7 @@ test('version-one database migration preserves users and saved signature survive
  try {
   const id=await provisionUser(db,{email:'migration@example.test',name:'Migration',role:'Admin',companyId:'PEW',department:'Test'},'Synthetic-test-password-123');
   db.exec('DROP TABLE user_signatures; PRAGMA user_version=1'); db.close();db=openDatabase(path);
-  assert.equal(db.prepare('PRAGMA user_version').get()!.user_version,3);
+  assert.equal(db.prepare('PRAGMA user_version').get()!.user_version,4);
   assert.equal(db.prepare('SELECT id FROM users').get()!.id,id);
   db.prepare('INSERT INTO user_signatures VALUES (?,?,?)').run(id,'stored-test-mark','Migration');db.close();db=openDatabase(path);
   assert.equal(ownSignature(db,id).signatureDataUrl,'stored-test-mark');

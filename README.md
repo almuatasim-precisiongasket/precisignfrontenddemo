@@ -3,7 +3,7 @@
 PreciSign is a digital request, multi-company workflow approval, and electronic signature platform engineered for **Precision Engineering Group** (Saudi Arabia) and its operating subsidiaries:
 
 - **Precision Engineering Works (PEW)**
-- **Industrial Chemical & Contracting Ltd (ICCL)**
+- **Insturmental Control Co Ltd (ICCL)**
 - **Flexi Seal Gasket Co. (FSG)**
 
 ---

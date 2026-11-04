@@ -1,3 +1,4 @@
+import { currentCompanyDisplay } from '../src/utils/companyDisplay';
 import { canReadPreciRoute } from '../src/utils/routeAccess';
 import { Router } from 'express';
 import { ownSignature } from './profile';
@@ -14,7 +15,7 @@ export function readRoutes(db: DatabaseSync) {
     const allowed = ids.filter(id => canUserAccessCompany(user, id));
     const placeholders = allowed.map(() => '?').join(',');
     const rows = allowed.length ? db.prepare(`SELECT id,name FROM companies WHERE id IN (${placeholders})`).all(...allowed) : [];
-    const companies: Company[] = rows.map(row => ({ id: row.id as CompanyId, code: String(row.id), name: String(row.name), fullName: `${row.id} - ${row.name}`, groupName: 'PRECISION ENGINEERING GROUP' }));
+    const companies: Company[] = rows.map(row => ({ id: row.id as CompanyId, code: String(row.id), name: String(row.name), fullName: `${row.id} - ${row.name}`, groupName: 'PRECISION ENGINEERING GROUP' })).map(currentCompanyDisplay);
     const users = db.prepare('SELECT id,email,name,role,department,company_id,allowed_companies,group_admin FROM users').all()
       .map(safeProfile).filter(candidate => allowed.some(id => canUserAccessCompany(candidate, id)));
     const workflows = allowed.length ? db.prepare(`SELECT config FROM workflows WHERE company_id IN (${placeholders})`).all(...allowed).map(row => JSON.parse(String(row.config))) : [];

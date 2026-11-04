@@ -28,7 +28,7 @@ test('schema initializes empty, rolls back and persists accounts across reopen',
     db.close(); db = openDatabase(path);
     assert.equal(sessionUser(db, session)?.id, id);
     assert.equal(db.prepare('SELECT count(*) AS n FROM users').get()!.n, 1);
-    assert.equal(db.prepare('PRAGMA user_version').get()!.user_version, 3);
+    assert.equal(db.prepare('PRAGMA user_version').get()!.user_version, 4);
   } finally { db.close(); rmSync(directory, { recursive: true }); }
 });
 

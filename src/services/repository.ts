@@ -1,3 +1,4 @@
+import { currentCompanyDisplay } from '../utils/companyDisplay';
 import {
   Company,
   CompanyId,
@@ -114,7 +115,7 @@ export class LocalStoragePreciSignRepository implements IPreciSignRepository {
   }
 
   async getCompanies(): Promise<Company[]> {
-    return this.getItem<Company[]>(STORAGE_KEYS.COMPANIES, INITIAL_COMPANIES);
+    return this.getItem<Company[]>(STORAGE_KEYS.COMPANIES, INITIAL_COMPANIES).map(currentCompanyDisplay);
   }
 
   async getCompanyById(id: CompanyId): Promise<Company | null> {

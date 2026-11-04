@@ -226,14 +226,14 @@ export const WorkflowSettingsView: React.FC = () => {
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold tracking-tight text-[#192B3C] flex items-center gap-2">
               <Sliders className="w-5 h-5 text-[#365C78]" />
-              <span>Forms &amp; Workflow Administration</span>
+              <span>Forms &amp; workflows</span>
             </h1>
             <span className="text-xs font-semibold px-2 py-0.5 rounded bg-[#EBF2F7] text-[#365C78] border border-[#C2D5E3]">
               {selectedCompany.code}
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Configure multi-tier approval stages, role assignments, document field mappings, and corporate governance rules.
+            Choose who signs each form and in what order.
           </p>
         </div>
 
@@ -456,7 +456,7 @@ export const WorkflowSettingsView: React.FC = () => {
                 <span>Governance &amp; Security Rules</span>
               </h2>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                Enterprise policy enforcement for document sign-off.
+                Rules for signing requests.
               </p>
             </div>
 

@@ -122,7 +122,7 @@ export const FormsLibraryView: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Standardized corporate documentation formats for Precision Engineering Group.
+            Choose a company form to get started.
           </p>
         </div>
 

@@ -118,7 +118,7 @@ export const AppSidebar: React.FC = () => {
                 <div className="text-sm font-bold text-white tracking-tight truncate flex items-center gap-1.5">
                   <span>PreciSign</span>
                   <span className="text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded bg-[#365C78]/70 text-slate-100 border border-[#4B799C]">
-                    v2.4 Enterprise
+                    PreciRoutes
                   </span>
                 </div>
                 <div className="text-[11px] text-slate-400 truncate font-normal">
@@ -141,7 +141,7 @@ export const AppSidebar: React.FC = () => {
           <nav className="p-3 space-y-1 text-xs font-medium overflow-y-auto flex-1">
             {/* Section: Workflow Operations */}
             <div className="px-3 py-1.5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
-              Workflow Inbox
+              Workspace
             </div>
 
             {/* 1. My Approvals */}
@@ -213,7 +213,7 @@ export const AppSidebar: React.FC = () => {
 
             {/* Section: Documents & Repositories */}
             <div className="pt-3 px-3 py-1.5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
-              Document Repository
+              Documents
             </div>
 
             {/* 5. Forms Library */}
@@ -282,7 +282,7 @@ export const AppSidebar: React.FC = () => {
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <PenTool className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">Signature &amp; Profile</span>
+                      <span className="truncate">Signature &amp; profile</span>
                     </div>
                     {hasSignature ? (
                       <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
@@ -488,7 +488,7 @@ export const AppSidebar: React.FC = () => {
                     className="w-full flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-medium text-slate-200 bg-[#24394E] hover:bg-[#365C78] rounded-md transition-colors"
                   >
                     <PenTool className="w-3 h-3 text-[#5B8FB9]" />
-                    <span>Manage Signature &amp; Profile</span>
+                    <span>Manage Signature &amp; profile</span>
                   </button>
 
                   <button

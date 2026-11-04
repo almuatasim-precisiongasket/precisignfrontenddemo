@@ -119,10 +119,10 @@ export const UserProfileView: React.FC = () => {
     <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-6">
       <div className="pb-4 border-b border-[#E2E5E9]">
         <h1 className="text-xl font-bold text-[#192B3C] tracking-tight">
-          User Profile &amp; E-Signature Registration
+          Signature settings
         </h1>
         <p className="text-xs text-slate-500 mt-1">
-          Configure your signature for document approvals.
+          Choose how your signature appears when you sign a request.
         </p>
       </div>
 
@@ -176,7 +176,7 @@ export const UserProfileView: React.FC = () => {
         <div className="flex items-center justify-between border-b border-[#E2E5E9] pb-3">
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#192B3C]">
-              Electronic Signature Studio
+              Your signature
             </h3>
             <p className="text-[11px] text-slate-500 mt-0.5">
               Each request still requires explicit signature confirmation. Existing signed requests keep their original marks.

@@ -45,7 +45,7 @@ export const CompactApprovalChain: React.FC<CompactApprovalChainProps> = ({
       case 'bypassed':
         return <ShieldCheck className="w-2.5 h-2.5 stroke-[2.5]" />;
       case 'current':
-        return <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />;
+        return <span className="w-1.5 h-1.5 rounded-full bg-white" />;
       default:
         return <span className="text-[9px] font-semibold">{milestone.participantInitials}</span>;
     }
@@ -77,7 +77,7 @@ export const CompactApprovalChain: React.FC<CompactApprovalChainProps> = ({
   const label = (m: JourneyMilestone) => m.status === 'submitted' ? 'Submitted' : m.status === 'completed' ? 'Signed' : m.status === 'bypassed' ? 'Bypassed' : m.status === 'current' ? 'Awaiting sign' : m.status === 'returned' ? 'Correction' : m.status === 'rejected' ? 'Rejected' : m.statusLabel === 'Closed' ? 'Closed' : 'Waiting';
   return <button type="button" onClick={handleClick}
     aria-label={`Approval Journey for ${request.id}: ${milestones.map(m => `${m.participantName}: ${m.statusLabel}`).join('; ')}. Open full journey.`}
-    className="group w-full min-w-[250px] max-w-[340px] rounded-lg p-2 -mx-2 text-left hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#365C78]">
+    className="group w-full min-w-[250px] max-w-[340px] rounded-lg p-2 -mx-2 text-left transition-colors duration-150 hover:bg-teal-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#365C78]">
     <span className="flex items-start">
       {visibleMilestones.map((m,i) => <React.Fragment key={m.id}>
         {i > 0 && <span aria-hidden="true" className="h-px flex-1 min-w-2 bg-slate-200 mt-3.5 mx-1"/>}

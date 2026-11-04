@@ -6,9 +6,11 @@ coverage/
 *.log
 .env*
 !.env.example
-data/
+/data/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
-backups/
+/backups/
 *.partial
+
+.vercel/

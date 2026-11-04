@@ -135,7 +135,7 @@ export const ArchiveRegisterView: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Searchable permanent corporate register with historical audit trail and export tools.
+            Find previous requests, review their history and export the list.
           </p>
         </div>
 
@@ -198,7 +198,7 @@ export const ArchiveRegisterView: React.FC = () => {
             >
               <option value="ALL">All Companies</option>
               <option value="PEW">Precision Engineering Works (PEW)</option>
-              <option value="ICCL">Industrial Coating &amp; Chemical (ICCL)</option>
+              <option value="ICCL">Insturmental Control Co Ltd (ICCL)</option>
               <option value="FSG">Future Steel Group (FSG)</option>
             </select>
           </div>

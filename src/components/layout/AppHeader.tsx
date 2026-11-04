@@ -104,7 +104,7 @@ export const AppHeader: React.FC = () => {
                   <div className="font-semibold flex items-center gap-1.5">
                     <span>🏢 PRECISION ENGINEERING GROUP</span>
                   </div>
-                  <div className="text-[10px] text-slate-500">Group Scope (Aggregates all authorized subsidiaries)</div>
+                  <div className="text-[10px] text-slate-500">All companies you can access</div>
                 </div>
                 {isGroupView && <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
               </button>
@@ -137,7 +137,7 @@ export const AppHeader: React.FC = () => {
                 ))}
               </div>
               <div className="mt-2 pt-2 border-t border-[#E2E5E9] px-2 text-[10px] text-slate-500">
-                Viewing scope is distinct from user permission authorization.
+                Choose a company to focus your view. Your access stays the same.
               </div>
             </div>
           )}

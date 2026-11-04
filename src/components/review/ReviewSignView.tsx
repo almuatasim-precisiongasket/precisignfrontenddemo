@@ -87,7 +87,7 @@ export const ReviewSignView: React.FC = () => {
           onClick={() => setActiveView('dashboard')}
           className="px-4 py-2 bg-[#365C78] text-white rounded-md text-xs font-semibold"
         >
-          Return to Operational Inbox
+          Back to requests
         </button>
       </div>
     );
@@ -98,7 +98,7 @@ export const ReviewSignView: React.FC = () => {
       <div className="p-12 text-center space-y-4">
         <div className="text-slate-500 text-sm">The {request.formType} document is not available for review yet.</div>
         <button onClick={() => setActiveView('dashboard')} className="px-4 py-2 bg-[#365C78] text-white rounded-md text-xs font-semibold">
-          Return to Operational Inbox
+          Back to requests
         </button>
       </div>
     );
@@ -762,7 +762,7 @@ export const ReviewSignView: React.FC = () => {
               rows={2}
               value={actionReason}
               onChange={(e) => setActionReason(e.target.value)}
-              placeholder="Audit justification for override (required)..."
+              placeholder="Reason for completing this route (required)..."
               className="w-full px-3 py-2 text-xs border border-[#E2E5E9] rounded focus:outline-none focus:ring-1 focus:ring-[#365C78]"
             />
             <div className="flex justify-end gap-2 pt-2">

@@ -164,15 +164,15 @@ export const DashboardView: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-[#E2E5E9]">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-[#192B3C]">
-              Your workspace
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#192B3C]">
+              Hello, {currentUser.name.split(' ')[0]}
             </h1>
             <span className="text-xs font-semibold px-2 py-0.5 rounded bg-[#EBF2F7] text-[#365C78] border border-[#C2D5E3]">
               {selectedCompany.code}
             </span>
           </div>
           <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
-            Your requests, signatures and next steps · <strong className="text-[#192B3C]">{currentUser.name}</strong> ({currentUser.role} · {currentUser.department}).
+            Your requests and next steps · <strong className="text-[#192B3C]">{currentUser.name}</strong> ({currentUser.role} · {currentUser.department}).
           </p>
         </div>
 
@@ -195,11 +195,11 @@ export const DashboardView: React.FC = () => {
 
       {refreshError && <p role="alert" className="text-xs text-rose-700">{refreshError}</p>}
       <div className="grid grid-cols-4 bg-white rounded-lg border border-slate-200 divide-x divide-slate-200">
-        {[['Needs my action',pendingForMeRequests.length,'pending'],['My active routes',myRequests.filter(r => r.status === 'Pending Approval').length,'my'],['Returned to me',returnedRequests.filter(r => r.requesterId === currentUser.id).length,'returned'],['Signing completed',approvedRequests.length,'approved']].map(([label,count,tab]) => <button key={String(tab)} onClick={() => { setInternalTab(tab as typeof internalTab); if(tab !== 'returned')setRequestsFilter(tab as 'pending'|'my'|'approved'); }} className="p-5 text-left hover:bg-slate-50"><strong className="block text-3xl tabular-nums text-[#192B3C]">{count}</strong><span className="text-sm text-slate-600">{label}</span></button>)}
+        {[['Needs my action',pendingForMeRequests.length,'pending'],['My active routes',myRequests.filter(r => r.status === 'Pending Approval').length,'my'],['Returned to me',returnedRequests.filter(r => r.requesterId === currentUser.id).length,'returned'],['Signing completed',approvedRequests.length,'approved']].map(([label,count,tab]) => <button key={String(tab)} onClick={() => { setInternalTab(tab as typeof internalTab); if(tab !== 'returned')setRequestsFilter(tab as 'pending'|'my'|'approved'); }} className="p-5 text-left transition-colors duration-150 hover:bg-teal-50/70 focus-visible:outline-2 focus-visible:outline-[#365C78]"><strong className="block text-3xl tabular-nums text-[#192B3C]">{count}</strong><span className="text-sm text-slate-600">{label}</span></button>)}
       </div>
       {pendingForMeRequests[0] && <div className="flex items-center justify-between gap-4 rounded-lg border border-teal-200 bg-teal-50 p-4"><div><strong>{pendingForMeRequests[0].pendingReplacement?.newUserId === currentUser.id ? 'An assignment needs your response' : 'A route needs your signature'}</strong><p className="text-sm text-slate-600">{pendingForMeRequests[0].id}</p></div><button className="rounded bg-[#192B3C] px-5 py-2 text-sm font-semibold text-white" onClick={() => openReviewRequest(pendingForMeRequests[0].id)}>Review route →</button></div>}
       <section aria-label="Company forms"><div className="flex justify-between items-center mb-3"><h2 className="text-xl font-bold">Company forms</h2><button className="text-sm text-[#365C78] font-semibold" onClick={() => setActiveView('forms-library')}>Browse library →</button></div><div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 flex items-center justify-between rounded-lg border border-teal-300 bg-white p-5"><div><h3 className="font-bold text-lg">Admin Work Request</h3><p className="text-sm text-slate-500">Documents, letters and administrative services</p><span className="text-xs text-teal-700">{selectedCompany.code} · {workflows.some(w => w.companyId === selectedCompany.id && w.formType === 'Admin Work Request') ? 'Configured' : 'Select a configured company'}</span></div><button className="rounded bg-[#192B3C] text-white px-4 py-2 text-sm" onClick={() => {setSelectedRequestFormType('Admin Work Request');setActiveView('create-request');}}>Start request →</button></div>
+        <div className="lg:col-span-2 flex items-center justify-between rounded-lg border border-teal-300 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"><div><h3 className="font-bold text-lg flex items-center gap-3"><span className="inline-flex p-2 rounded-lg bg-teal-50 text-teal-700"><Inbox className="w-5 h-5" aria-hidden="true" /></span>Admin Work Request</h3><p className="text-sm text-slate-500">Documents, letters and administrative services</p><span className="text-xs text-teal-700">{selectedCompany.code} · {workflows.some(w => w.companyId === selectedCompany.id && w.formType === 'Admin Work Request') ? 'Ready to use' : 'Select a configured company'}</span></div><button className="rounded bg-[#192B3C] text-white px-4 py-2 text-sm" onClick={() => {setSelectedRequestFormType('Admin Work Request');setActiveView('create-request');}}>Start request →</button></div>
         <div className="rounded-lg border border-slate-200 bg-white p-5"><h3 className="font-semibold">{draftFormData ? 'Continue your draft' : 'Ready when you are'}</h3><p className="text-sm text-slate-500 mt-1">Admin Work Request</p><button className="mt-3 text-sm text-[#365C78] font-semibold" onClick={() => setActiveView('create-request')}>{draftFormData ? 'Resume draft →' : 'Open form →'}</button></div>
       </div></section>
       <h2 className="text-xl font-bold">Recent PreciRoutes</h2>
@@ -393,7 +393,7 @@ export const DashboardView: React.FC = () => {
                     <React.Fragment key={req.id}>
                       <tr
                         onClick={() => setExpandedRowId(isExpanded ? null : req.id)}
-                        className={`hover:bg-[#F9FAFB] transition-colors cursor-pointer ${
+                        className={`hover:bg-sky-50/60 transition-colors duration-150 cursor-pointer ${
                           isExpanded ? 'bg-[#EBF2F7]/40' : ''
                         }`}
                       >
@@ -597,13 +597,13 @@ export const DashboardView: React.FC = () => {
             Showing {filteredRequests.length} of {companyRequests.length} requests in {selectedCompany.fullName}
           </span>
           <div className="flex items-center gap-3">
-            <span className="text-slate-600 font-medium">Tenant Isolation: Strict {selectedCompany.code}</span>
-            <span className="text-slate-300">|</span>
+
+
             <button
               onClick={() => setActiveView('archive')}
               className="font-medium text-[#365C78] hover:underline"
             >
-              Open Full Searchable Archive Register
+              Open register
             </button>
           </div>
         </div>
