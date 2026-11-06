@@ -1,5 +1,7 @@
 # PreciRoutes implementation checklist
 
+Keep this checklist as evidence for route behavior. The [pre-production handoff](../docs/PRE_PRODUCTION.md) tracks pilot accounts, access, and rollout decisions.
+
 Planning record — 4 November 2026. Product agreement is recorded in docs/PRECIROUTES_SPEC.md. All implementation below remains pending. Preserve T01–T26 history and its deferred browser gates.
 
 For each task record changed files, requirement IDs, exact checks/results and unresolved acceptance. Work sequentially in small slices through IPreciSignRepository. Preserve AdminWorkRequestDocument.tsx and src/index.css. Before code changes follow the existing source-backup requirement in tasks/plan.md. Do not import real employee data or deploy during implementation without that scope being authorized.

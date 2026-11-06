@@ -14,9 +14,10 @@ export interface ITRequestFields {
 
 interface ITSignature { name?: string; dataUrl?: string }
 
-export function ITRequestDocument({ fields, organization, requesterSignature, approvalSignature, remarks }: {
+export function ITRequestDocument({ fields, organization, requesterSignature, approvalSignature, remarks, logoUrl }: {
   fields: ITRequestFields;
   organization: string;
+  logoUrl?: string;
   requesterSignature?: ITSignature;
   approvalSignature?: ITSignature;
   remarks?: string;
@@ -39,7 +40,7 @@ export function ITRequestDocument({ fields, organization, requesterSignature, ap
   return (
     <article className="it-request-document" aria-label="IT Request Form document">
       <header className="it-document-header">
-        <CompanyLogoSlot className="it-document-brand" />
+        <CompanyLogoSlot className="it-document-brand" logoUrl={logoUrl} />
         <h3>IT Request Form</h3>
       </header>
       <div className="it-document-body">

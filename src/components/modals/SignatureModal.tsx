@@ -8,7 +8,8 @@ interface SignatureModalProps {
   user: UserProfile;
   title?: string;
   confirmLabel?: string;
-  onConfirm: (signatureDataUrl: string) => Promise<{ success: boolean; error?: string } | undefined>;
+  noteLabel?: string;
+  onConfirm: (signatureDataUrl: string, note?: string) => Promise<{ success: boolean; error?: string } | undefined>;
 }
 
 export const SignatureModal: React.FC<SignatureModalProps> = ({
@@ -17,11 +18,13 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
   user,
   title = 'Confirm Digital E-Signature',
   confirmLabel = 'Confirm & Apply Signature',
+  noteLabel,
   onConfirm,
 }) => {
   const [tab, setTab] = useState<'style' | 'draw' | 'upload'>('style');
   const [styledName, setStyledName] = useState(user.name);
   const [saving, setSaving] = useState(false);
+  const [note, setNote] = useState('');
   const savingRef = useRef(false);
   const [drawnDataUrl, setDrawnDataUrl] = useState<string | null>(null);
   const [uploadedDataUrl, setUploadedDataUrl] = useState<string | null>(null);
@@ -131,7 +134,7 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
     savingRef.current = true;
     setSaving(true);
     try {
-      const result = await onConfirm(finalDataUrl);
+      const result = await onConfirm(finalDataUrl, noteLabel ? note.trim() || undefined : undefined);
       if (result?.success) onClose();
       else setSignatureError(result?.error || 'The save was not confirmed. Your signature and entries are preserved.');
     } catch {
@@ -141,7 +144,7 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full overflow-hidden border border-[#CBD5E1]">
+      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-full overflow-y-auto border border-[#CBD5E1]">
         {/* Header */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-[#E2E5E9] bg-[#F5F6F8]">
           <div className="min-w-0 pr-2">
@@ -279,6 +282,13 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
               )}
             </div>
           )}
+
+          {noteLabel && <label className="block space-y-1 text-xs">
+            <span className="font-semibold">{noteLabel} (optional)</span>
+            <textarea rows={2} maxLength={2000} value={note} onChange={event => setNote(event.target.value)}
+              className="workspace-control block w-full rounded-md px-3 py-2" />
+            <span className="block text-slate-600">People who can open this request can read this note in its history. It stays off the official form.</span>
+          </label>}
 
           {/* Governance Notice */}
           <div className="p-2.5 bg-slate-100 rounded-md border border-slate-200 text-[11px] text-slate-700 leading-snug flex items-center gap-2">

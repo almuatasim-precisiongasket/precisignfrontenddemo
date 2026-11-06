@@ -5,6 +5,7 @@ import { openDatabase } from './db';
 import { provisionUser, createSession } from './auth';
 import { createApp } from './app';
 import { INITIAL_WORKFLOWS, INITIAL_REQUESTS } from '../src/data/seedData';
+import type { RequestRecord } from '../src/types';
 
 test('HTTP lifecycle enforces signatures, stages, revisions and correction history', async () => {
   const db = openDatabase(':memory:');
@@ -54,13 +55,34 @@ test('HTTP lifecycle enforces signatures, stages, revisions and correction histo
       ids.push(id);
       cookies.push(`precisign_session=${createSession(db, id)}`);
     }
-    const combinedWorkflow = { ...workflow, formType: combinedType, version: 1, processingUserIds: [ids[0], ids[4]] };
+    const combinedWorkflow = { ...workflow, formType: combinedType, version: 1, processingUserIds: [ids[0], ids[4]],
+      stages: workflow.stages.map(stage => stage.isFinalApproval ? { ...stage,
+        backupSignerIds: [ids[3], ids[5]], backupCompletionUserIds: [ids[5]],
+      } : stage),
+    };
     db.prepare('INSERT INTO workflows VALUES (?,?,?,?)').run('PEW', combinedType, 1, JSON.stringify(combinedWorkflow));
     const optionalInput = { ...input, formType: combinedType, expectedWorkflowVersion: 1,
       formData: { ...formData, administrativePayment: { documentDescription: '' } }, signerChoices: {} };
     const finalId = combinedWorkflow.stages[1].id;
     assert.equal((await post('/requests', 0, { ...optionalInput, signerChoices: { [finalId]: null } })).status, 400);
     assert.equal((await post('/requests', 0, { ...optionalInput, signerChoices: { [finalId]: ids[4] } })).status, 400);
+    const withSecondaries = (secondaryIds: string[]) => ({ ...optionalInput,
+      signerChoices: { [finalId]: { primaryId: ids[2], secondaryIds } },
+    });
+    for (const invalid of [[ids[4]], [ids[3], ids[3]], [ids[2]], [ids[0]]]) {
+      assert.equal((await post('/requests', 0, withSecondaries(invalid))).status, 400);
+    }
+    const alternateResponse = await post('/requests', 0, withSecondaries([ids[3], ids[5]]));
+    assert.equal(alternateResponse.status, 201);
+    const alternateRecord: RequestRecord = await alternateResponse.json();
+    assert.deepEqual(alternateRecord.workflowConfig.stages.at(-1)?.backupSignerIds, [ids[3], ids[5]]);
+    assert.deepEqual(alternateRecord.approvalSteps.map(step => step.assignedUserId), [ids[2]]);
+    for (const backup of [3, 5]) {
+      assert.equal((await post(`/requests/${alternateRecord.id}/approve`, backup, { expectedRevision: 1, signatureDataUrl: signature })).status, 404);
+    }
+    const subsetResponse = await post('/requests', 0, withSecondaries([ids[3]]));
+    assert.equal(subsetResponse.status, 201);
+    assert.deepEqual((await subsetResponse.json()).workflowConfig.stages.at(-1).backupCompletionUserIds, []);
     const optional = await post('/requests', 0, { ...optionalInput, signerChoices: undefined });
     assert.equal(optional.status, 201);
     const optionalRecord = await optional.json();

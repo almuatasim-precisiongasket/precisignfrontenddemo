@@ -1,5 +1,25 @@
 # Local pilot
 
+## Synthetic account bootstrap
+
+Use a new, separate local database and a credentials file outside the repository. Create both parent directories first. The command accepts absolute paths:
+
+```powershell
+npm run provision:pilot -- "C:\absolute\pilot\precisign.sqlite" "C:\absolute\private\credentials.json"
+```
+
+The command creates six synthetic accounts, assigns the three company grants, leaves form grants empty, and requires a password change at first sign-in. Muatasim is the initial super admin. The credential file is created once with restricted permissions. Keep it private and never commit it. The tool refuses an unmarked existing database. Rerunning an initialized pilot does not reset passwords, email addresses, or access. These identities and assignments are test fixtures.
+
+Run the connected app with `VITE_DATA_MODE=api`, `DATABASE_PATH` set to that pilot database, and `APP_ORIGIN=http://127.0.0.1:3000`. Run `npm run dev:server` and `npm run dev` in separate terminals. Public signup must remain inaccessible until the synthetic bootstrap is complete. Real pilot hosting needs an approved HTTPS origin and persistent storage.
+
+The super admin can use User directory → Manage access to grant companies and forms. Changes take effect on the next server request; reload or sign in again to refresh the employee's displayed choices. Existing assigned signers still need company access, but do not need permission to start the form. An authorized workflow administrator with company access can configure signing routes separately for PEW, ICCL, and FSG. This authority is separate from account administration. Connected requests can be submitted for PEW, ICCL, or FSG when the employee has the form grant and the company has a configured signing route. Group View requires a legal company selection.
+
+For synthetic testing, run `npm run seed:pilot-workflows -- "C:\absolute\pilot\precisign.sqlite"` against a database created by the pilot bootstrap. It adds missing configurations for the four current forms per company and preserves existing configurations. Test accounts keep their existing grants. Use Manage access to grant only the forms needed for the exercise. The sample signers and processing team are for synthetic testing.
+
+For password recovery, choose Create reset link in the directory and share the displayed link privately. It expires after 30 minutes, is valid once, and is replaced by a newer link. The employee chooses a new password; sessions are revoked. Links are invalidated when an account is disabled or its sign-in email or password changes, and are cleared from restored databases. There is no email delivery in this phase. Use an HTTPS `APP_ORIGIN` for an actual pilot and keep links out of logs and tickets.
+
+This guide covers the existing connected setup. The [pre-production handoff](PRE_PRODUCTION.md) tracks employee onboarding, per-company form access, and readiness for a real pilot. Dated verification below applies to the versions tested at the time.
+
 ## PreciRoutes implementation update — 4 November 2026
 
 PreciRoutes supports early final signing, explicit final completion/bypass, requester cancellation, signer replacement and processing-team read access. Completed signing retains stored `Approved` for compatibility; it does not mean department work fulfillment. Review screens can download the selected document version as a PDF in connected mode. The completed route summary and supporting attachments are separate downloads.

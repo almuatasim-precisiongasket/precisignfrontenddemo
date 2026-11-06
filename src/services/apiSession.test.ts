@@ -3,6 +3,22 @@ import assert from 'node:assert/strict';
 import { ApiSession } from './apiSession';
 import { ApiError } from './apiTypes';
 
+test('temporary-password login and restore stop before loading protected data', async () => {
+  let bootstrapCalls = 0;
+  const user: any = { id: 'temporary', mustChangePassword: true };
+  const repository: any = {
+    login: async () => user,
+    getCurrentUser: async () => user,
+    bootstrap: async () => { bootstrapCalls++; throw new Error('must not load'); },
+  };
+  const session = new ApiSession(repository);
+  await session.login('test@example.test', 'synthetic-password');
+  assert.equal(session.state.status, 'password-change');
+  await session.restore();
+  assert.equal(session.state.status, 'password-change');
+  assert.equal(bootstrapCalls, 0);
+});
+
 test('restore clears data on unauthorized and never substitutes demo on outage', async () => {
   const repository: any = { getCurrentUser: async () => { throw new ApiError(401, 'expired'); } };
   const session = new ApiSession(repository);

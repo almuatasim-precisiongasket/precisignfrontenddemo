@@ -18,10 +18,16 @@ import {
   CheckCircle2,
   AlertCircle,
   Globe,
+  UsersRound,
+  ImageIcon,
+  PanelLeftClose,
 } from 'lucide-react';
 import { PARENT_ORGANIZATION_ID, ViewingScope } from '../../types';
+import { BrandLockup } from './BrandLockup';
+import { AccountMenu } from './AccountMenu';
+import { canAdministerWorkflows } from '../../utils/workflowAdministration';
 
-export const AppSidebar: React.FC = () => {
+export const AppSidebar: React.FC<{ canOpenDirectory?: boolean; onSignOut?: () => void; desktopHidden: boolean; onHideDesktop: () => void }> = ({ canOpenDirectory, onSignOut, desktopHidden, onHideDesktop }) => {
   const {
     readOnly,
     activeView,
@@ -58,15 +64,7 @@ export const AppSidebar: React.FC = () => {
   const hasSignature = Boolean(currentUser.signatureDataUrl || currentUser.signatureStyleText);
 
   const handleNav = (
-    view:
-      | 'dashboard'
-      | 'create-request'
-      | 'review-sign'
-      | 'requests'
-      | 'workflow-settings'
-      | 'user-profile'
-      | 'forms-library'
-      | 'archive',
+    view: typeof activeView,
     filter?: 'pending' | 'my' | 'all' | 'approved'
   ) => {
     if (filter) {
@@ -97,35 +95,20 @@ export const AppSidebar: React.FC = () => {
       )}
 
       <aside
-        className={`app-sidebar w-64 bg-linear-to-br from-[#102135] via-[#10283e] to-[#0a324b] text-slate-200 flex flex-col justify-between shrink-0 h-dvh border-r border-workspace-rail-line select-none motion-safe:transition-transform motion-safe:duration-150 fixed inset-y-0 left-0 z-50 ${
+        id="workspace-sidebar"
+        className={`app-sidebar preci-rail w-64 text-slate-200 flex flex-col justify-between shrink-0 h-dvh border-r border-workspace-rail-line select-none fixed inset-y-0 left-0 z-50 ${
           isMobileSidebarOpen ? 'visible translate-x-0 shadow-2xl' : 'invisible -translate-x-full'
-        } md:sticky md:top-0 md:self-start md:visible md:translate-x-0 md:shadow-none md:z-30`}
+        } ${desktopHidden ? 'md:hidden' : 'md:sticky md:top-0 md:self-start md:visible md:translate-x-0 md:shadow-none md:z-30'}`}
       >
         {/* TOP SECTION: Header & Scrollable Nav */}
         <div className="flex flex-col min-h-0 flex-1">
           {/* Company & Product Header */}
-          <div className="h-16 flex items-center justify-between px-4 border-b border-workspace-rail-line bg-workspace-rail-deep shrink-0">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-teal-200/20 bg-teal-200/10 p-1.5">
-                <img
-                  src="/assets/aistudio/precision-logo_e56c0764.png"
-                  alt=""
-                  className="w-6 h-6 object-contain brightness-0 invert"
-                  loading="eager"
-                />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-bold text-white tracking-tight truncate flex items-center gap-1.5">
-                  <span>PreciSign</span>
-                  <span className="text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded bg-[#365C78]/70 text-slate-100 border border-[#4B799C]">
-                    PreciRoutes
-                  </span>
-                </div>
-                <div className="text-[11px] text-slate-400 truncate font-normal">
-                  Precision Engineering Group
-                </div>
-              </div>
-            </div>
+          <div className="h-16 flex items-center justify-between px-4 border-b border-white/12 shrink-0">
+            <BrandLockup />
+            <button type="button" aria-label="Hide sidebar" title="Hide sidebar" onClick={onHideDesktop}
+              className="hidden shrink-0 rounded-md p-1.5 text-slate-300 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-teal-200 md:block">
+              <PanelLeftClose aria-hidden="true" className="size-4" />
+            </button>
 
             {/* Mobile close button */}
             <button
@@ -149,6 +132,7 @@ export const AppSidebar: React.FC = () => {
               <House aria-hidden="true" className="size-4 shrink-0" /> Overview
             </button>
 
+            {(!readOnly || companies.length > 0) && <>
             {/* 1. My Approvals */}
             <button
               onClick={() => handleNav('requests', 'pending')}
@@ -214,6 +198,7 @@ export const AppSidebar: React.FC = () => {
             {/* 5. Forms Library */}
             <button
               onClick={() => handleNav('forms-library')}
+              aria-current={activeView === 'forms-library' ? 'page' : undefined}
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md border-s-2 border-transparent transition-colors ${
                 activeView === 'forms-library'
                   ? 'border-s-teal-300 bg-workspace-rail-selected font-semibold text-white'
@@ -227,6 +212,7 @@ export const AppSidebar: React.FC = () => {
             {/* 6. Archive */}
             <button
               onClick={() => handleNav('archive')}
+              aria-current={activeView === 'archive' ? 'page' : undefined}
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md border-s-2 border-transparent transition-colors ${
                 activeView === 'archive'
                   ? 'border-s-teal-300 bg-workspace-rail-selected font-semibold text-white'
@@ -237,43 +223,44 @@ export const AppSidebar: React.FC = () => {
               <span className="truncate">Archive &amp; Register</span>
             </button>
 
-            {/* 7. Administration */}
-            <div className="pt-3">
+            </>}
+            {(canOpenDirectory || !readOnly || (companies.length > 0 && canAdministerWorkflows(currentUser))) && <div className="mt-3 border-t border-white/12 pt-2">
               <button
                 onClick={() => setAdminOpen(!adminOpen)}
+                aria-expanded={adminOpen}
                 className="w-full flex items-center justify-between px-3 py-1.5 text-slate-400 hover:text-slate-200 uppercase tracking-wider text-[10px] font-extrabold"
               >
                 <span>Administration</span>
                 <ChevronDown
-                  className={`w-3.5 h-3.5 transition-transform duration-200 ${adminOpen ? 'rotate-180' : ''}`}
+                  className={`w-3.5 h-3.5 motion-safe:transition-transform motion-safe:duration-150 ${adminOpen ? 'rotate-180' : ''}`}
                 />
               </button>
 
               {adminOpen && (
-                <div className="mt-1 space-y-0.5 pl-2 border-l border-[#24394E] ml-3">
-                  <button
+                <div className="mt-1 space-y-1">
+                  {(!readOnly || canAdministerWorkflows(currentUser)) && <button
                     onClick={() => handleNav('workflow-settings')}
-                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs transition-colors ${
-                      activeView === 'workflow-settings'
-                        ? 'bg-[#24394E] text-white font-semibold border-l-2 border-[#5B8FB9]'
-                        : 'text-slate-400 hover:bg-[#24394E]/60 hover:text-white'
-                    }`}
+                    aria-current={activeView === 'workflow-settings' ? 'page' : undefined}
+                    className="preci-nav-item"
                   >
                     <Sliders className="w-3.5 h-3.5 shrink-0" />
                     <span className="truncate">Signing routes</span>
-                  </button>
-
-
+                  </button>}
+                  {canOpenDirectory && <button type="button" onClick={() => handleNav('user-directory')}
+                    aria-current={activeView === 'user-directory' ? 'page' : undefined} className="preci-nav-item">
+                    <UsersRound aria-hidden="true" className="size-4 shrink-0" /> User directory
+                  </button>}
+                  {canOpenDirectory && <button type="button" onClick={() => handleNav('company-branding')}
+                    aria-current={activeView === 'company-branding' ? 'page' : undefined} className="preci-nav-item">
+                    <ImageIcon aria-hidden="true" className="size-4 shrink-0" /> Company branding
+                  </button>}
                 </div>
               )}
-            </div>
+            </div>}
                   <button
                     onClick={() => handleNav('user-profile')}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs transition-colors ${
-                      activeView === 'user-profile'
-                        ? 'bg-[#24394E] text-white font-semibold border-l-2 border-[#5B8FB9]'
-                        : 'text-slate-400 hover:bg-[#24394E]/60 hover:text-white'
-                    }`}
+                    aria-current={activeView === 'user-profile' ? 'page' : undefined}
+                    className="preci-nav-item justify-between"
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <PenTool className="w-3.5 h-3.5 shrink-0" />
@@ -291,7 +278,7 @@ export const AppSidebar: React.FC = () => {
         {/* BOTTOM FIXED FOOTER: Organization Scope & User Persona Card */}
         <div className="p-3 border-t border-workspace-rail-line bg-workspace-rail-deep shrink-0 space-y-2">
           {/* Active Viewing Scope Card */}
-          <div className="relative">
+          {(!readOnly || companies.length > 0) && <div className="relative">
             <button
               onClick={() => setShowScopeDropdown(!showScopeDropdown)}
               className="w-full px-2.5 py-1.5 bg-[#182838] hover:bg-[#1f3347] rounded-md border border-[#2d4763] flex items-center justify-between text-left text-[11px] transition-colors group"
@@ -376,10 +363,10 @@ export const AppSidebar: React.FC = () => {
                 </div>
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Current User Card */}
-          <div className="relative">
+          {readOnly ? <AccountMenu inSidebar onSignOut={onSignOut} /> : <div className="relative">
             <button
               onClick={() => { if (!readOnly) setShowUserMenu(!showUserMenu); }}
               className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-[#24394E] transition-colors text-left border border-[#24394E] hover:border-[#365C78] bg-[#182838]/60"
@@ -499,7 +486,7 @@ export const AppSidebar: React.FC = () => {
                 </div>
               </div>
             )}
-          </div>
+          </div>}
         </div>
       </aside>
     </>

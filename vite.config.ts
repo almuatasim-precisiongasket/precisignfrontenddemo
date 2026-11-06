@@ -13,7 +13,7 @@ export default defineConfig(() => {
     },
     server: {
       proxy: {
-        '/api': { target: 'http://127.0.0.1:3001', changeOrigin: false },
+        '/api': { target: process.env.PRECISIGN_DEV_API_TARGET || 'http://127.0.0.1:3001', changeOrigin: false },
       },
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.

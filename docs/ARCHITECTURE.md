@@ -1,5 +1,7 @@
 # PreciSign Architecture Specification
 
+The current application has browser-local demo and connected Express/SQLite modes. See the [local pilot guide](LOCAL_PILOT.md) for runtime details and the [pre-production handoff](PRE_PRODUCTION.md) for the proposed pilot work. Use the [PreciRoutes spec](PRECIROUTES_SPEC.md) for current route rules.
+
 ## 1. System Overview
 
 PreciSign is structured as a modular React and TypeScript Single Page Application (SPA) designed to transition seamlessly from a client-side prototype to a full-stack enterprise platform implemented by Codex.

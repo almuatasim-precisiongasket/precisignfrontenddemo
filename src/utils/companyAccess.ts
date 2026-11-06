@@ -16,6 +16,7 @@ import {
   */
 export function canUserAccessCompany(user: UserProfile, companyId: CompanyId): boolean {
   if (!user) return false;
+  if (user.companyGrants !== undefined) return user.companyGrants.includes(companyId);
   // Group Admins, Directors, and General Managers have cross-company group authorization
   if (user.isGroupAdmin || user.role === 'Director' || user.role === 'General Manager') {
     return true;
@@ -29,6 +30,11 @@ export function canUserAccessCompany(user: UserProfile, companyId: CompanyId): b
     return true;
   }
   return false;
+}
+
+export function canUserStartForm(user: UserProfile, companyId: CompanyId, formType: string): boolean {
+  return canUserAccessCompany(user, companyId)
+    && (user.companyGrants === undefined || user.formGrants?.[companyId]?.includes(formType) === true);
 }
 
 /**

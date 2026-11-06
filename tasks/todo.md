@@ -1,5 +1,7 @@
 # PreciSign ordered work checklist
 
+This checklist records earlier implementation batches. Current pilot priorities and open decisions live in the [pre-production handoff](../docs/PRE_PRODUCTION.md).
+
 Read plan.md first. All items start unimplemented. Do not mark a task done merely because code exists. After implementation append evidence under the task. Dependencies are sequential unless stated. S = 1–2 files; M = 3–5 files. Split any larger task before coding.
 
 ## Phase 1 — reliable existing prototype

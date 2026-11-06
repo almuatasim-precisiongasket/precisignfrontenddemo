@@ -21,12 +21,12 @@ import {
   Check,
   Building,
   ChevronRight,
-  FilePlus2,
   LayoutGrid,
   Zap,
   BarChart3,
 } from 'lucide-react';
 import { companyForms } from '../library/FormsLibraryView';
+import { canUserStartForm } from '../../utils/companyAccess';
 import { CompactApprovalChain } from '../common/CompactApprovalChain';
 import { ApprovalJourneyModal } from '../common/ApprovalJourneyModal';
 import { ApprovalJourneyPanel } from '../journey/ApprovalJourneyPanel';
@@ -40,12 +40,16 @@ export const DashboardView: React.FC = () => {
     refreshRequests,
     companyRequests,
     selectedCompany,
+    selectedScope,
+    companies,
     setActiveView,
     requestsFilter,
     setRequestsFilter,
     openReviewRequest,
     setSelectedRequestFormType,
   } = useApp();
+  const formShortcuts = companyForms.filter(form => !connected || companies.some(company =>
+    (selectedScope === 'PEG' || selectedScope === company.id) && canUserStartForm(currentUser, company.id, form.name)));
 
   const [searchQuery, setSearchQuery] = useState('');
   const [formFilter,setFormFilter] = useState('ALL');
@@ -192,14 +196,11 @@ export const DashboardView: React.FC = () => {
       {/* Top Section: Operational Status & Primary Action */}
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <p className="mb-1.5 text-xs font-semibold text-workspace-steel">Operational inbox</p>
-          <div className="flex items-center gap-2">
+          <p className="preci-eyebrow mb-1.5">Inbox</p>
+          <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight text-workspace-ink sm:text-3xl">
-              Requests, approvals and signing
+              {activeView === 'dashboard' ? `Welcome back, ${currentUser.name.trim().split(/\s+/)[0]} 👋` : 'Requests and approvals'}
             </h1>
-            <span className="rounded-md border border-workspace-line bg-white px-2 py-0.5 text-xs font-semibold text-workspace-steel">
-              {selectedCompany.code}
-            </span>
           </div>
           <p className="mt-1.5 text-sm text-workspace-muted">
             Create, review and track company forms in one place.
@@ -213,7 +214,7 @@ export const DashboardView: React.FC = () => {
             finally { setRefreshing(false); }
           }}><RefreshCw aria-hidden="true" className={`size-4 text-workspace-steel ${refreshing ? 'motion-safe:animate-spin' : ''}`} />{refreshing ? 'Refreshing…' : 'Refresh requests'}</button>}
           <button type="button" onClick={() => setActiveView('forms-library')}
-            className="workspace-primary inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap bg-linear-to-r from-[#00657a] to-[#087b79] px-5 text-sm shadow-sm">
+            className="workspace-primary preci-press inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap bg-linear-to-r from-[#00657a] to-[#087b79] px-5 text-sm shadow-sm">
             <Plus aria-hidden="true" className="size-4" />
             New PreciRoute
           </button>
@@ -230,10 +231,10 @@ export const DashboardView: React.FC = () => {
         ] as const).map(([label, count, tab, Icon, tone]) => (
           <button type="button" key={tab} aria-pressed={internalTab === tab}
             onClick={() => selectTab(tab)}
-            className="inbox-stat flex min-w-0 items-center gap-3 rounded-xl border p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-workspace-steel"
+            className="inbox-stat preci-press flex min-w-0 items-center gap-2 rounded-xl border p-2.5 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-workspace-steel sm:gap-3 sm:p-3"
             data-tone={tone}>
-            <span className="inbox-stat-icon grid size-10 shrink-0 place-items-center rounded-lg sm:size-12">
-              <Icon aria-hidden="true" className="size-5" />
+            <span className="inbox-stat-icon grid size-8 shrink-0 place-items-center rounded-lg sm:size-12">
+              <Icon aria-hidden="true" className="size-4 sm:size-5" />
             </span>
             <span className="relative min-w-0 flex-1 text-workspace-ink">
               <span className="block text-xs font-semibold sm:text-sm">{label}</span>
@@ -244,29 +245,23 @@ export const DashboardView: React.FC = () => {
         ))}
       </section>
 
-      <section aria-label="Company forms" className="grid gap-4 xl:grid-cols-[minmax(220px,1fr)_minmax(0,2.45fr)]">
-        <button type="button" onClick={() => setActiveView('forms-library')}
-          className="flex min-h-22 items-center gap-4 rounded-xl bg-linear-to-br from-[#315872] to-[#092b45] px-5 py-4 text-left text-white shadow-sm hover:from-[#28677a] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-workspace-steel">
-          <FilePlus2 aria-hidden="true" className="size-9 shrink-0 text-cyan-200" />
-          <span className="flex-1"><strong className="block text-base">Create a new PreciRoute</strong><span className="mt-1 block text-xs text-slate-100">Start a request using a company form.</span></span>
-          <ArrowRight aria-hidden="true" className="size-8 shrink-0 rounded-full bg-white/12 p-2" />
-        </button>
-        <div className="min-w-0">
-          <h2 className="mb-2 text-sm font-bold text-workspace-ink">Company forms</h2>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-            {companyForms.map(({ name, icon: Icon }) => (
-              <button type="button" key={name} className="workspace-control flex min-h-14 items-center gap-2 px-2.5 text-left text-xs font-semibold shadow-sm"
+      <section aria-labelledby="dashboard-forms-heading" className="min-w-0">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h2 id="dashboard-forms-heading" className="text-base font-bold text-workspace-ink">Company forms</h2>
+          <button type="button" onClick={() => setActiveView('forms-library')} className="preci-link inline-flex items-center gap-2 py-1">
+            <LayoutGrid aria-hidden="true" className="size-4" /> Forms library <ArrowRight aria-hidden="true" className="size-4" />
+          </button>
+        </div>
+        {formShortcuts.length ? <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {formShortcuts.map(({ name, department, icon: Icon }) => (
+              <button type="button" key={name} className="workspace-control preci-press flex min-h-16 items-center gap-3 p-3 text-left text-sm font-semibold shadow-sm"
                 onClick={() => { setSelectedRequestFormType(name); setActiveView('create-request'); }}>
-                <Icon aria-hidden="true" className="size-5 shrink-0 text-workspace-teal" />
-                {name}
+                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-workspace-tint text-workspace-teal"><Icon aria-hidden="true" className="size-5" /></span>
+                <span className="min-w-0 flex-1 leading-tight">{name}<span className="mt-1 block text-xs font-normal text-workspace-muted">{department}</span></span>
+                <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-workspace-muted" />
               </button>
             ))}
-            <button type="button" onClick={() => setActiveView('forms-library')} className="workspace-control flex min-h-14 items-center gap-2 bg-workspace px-2.5 text-left text-xs font-semibold shadow-sm">
-              <LayoutGrid aria-hidden="true" className="size-5 shrink-0 text-workspace-teal" />
-              <span>Forms library<span className="block font-normal text-workspace-muted">View all forms</span></span>
-            </button>
-          </div>
-        </div>
+          </div> : <p className="workspace-panel p-4 text-sm text-workspace-muted">No forms are assigned in this view. Switch company or ask your account administrator for form access.</p>}
       </section>
       {draftFormData && <button type="button" className="workspace-control min-h-9 px-3 text-sm font-semibold"
         onClick={() => { setSelectedRequestFormType('Admin Work Request'); setActiveView('create-request'); }}>Resume Admin Work Request draft →</button>}

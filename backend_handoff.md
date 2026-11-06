@@ -1,5 +1,7 @@
 # PreciSign — Backend Handoff & Architecture Guide
 
+**Historical design proposal.** The PostgreSQL design below is not the active storage implementation. See the [local SQLite setup](docs/LOCAL_PILOT.md) and the [pre-production handoff](docs/PRE_PRODUCTION.md).
+
 ## 1. Scope & System Profile
 - **Target Organization**: Precision Engineering Group (Saudi Arabia) — Operating across subsidiaries PEW, ICCL, and FSG.
 - **Scale**: Internal operational tool for approximately 20 to 50 active users (requesters, department heads, GM, and Director).

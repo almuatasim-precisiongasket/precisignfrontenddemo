@@ -22,7 +22,7 @@ export function FinancialRequestDocument({ data, processing, attachments = [] }:
   return (
     <article className={`admin-payment-document${voucher ? ' cash-voucher-document' : ''}`} aria-label={title}>
       <header className="admin-payment-header">
-        <CompanyLogoSlot className="admin-payment-logo" />
+        <CompanyLogoSlot className="admin-payment-logo" logoUrl={data.companyLogoDataUrl} />
         <p>{data.companyName}</p>
         <h2>{title}</h2>
       </header>

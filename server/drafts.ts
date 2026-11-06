@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { DatabaseSync } from 'node:sqlite';
 import type { CompanyId, AdminWorkDraft } from '../src/types/index';
-import { canUserAccessCompany } from '../src/utils/companyAccess';
+import { canUserAccessCompany, canUserStartForm } from '../src/utils/companyAccess';
 import { transaction } from './db';
 import { RequestError, fields, form, attachments } from './requestValidation';
 
@@ -31,6 +31,7 @@ export function draftRoutes(db: DatabaseSync) {
     const { companyId, formType } = req.params;
     if (!['PEW','ICCL','FSG'].includes(companyId) || formType !== 'Admin Work Request') { next(new RequestError(400, 'Invalid draft key.')); return; }
     if (!canUserAccessCompany(res.locals.user, companyId as CompanyId)) { next(new RequestError(403, 'Company access denied.')); return; }
+    if (!canUserStartForm(res.locals.user, companyId as CompanyId, formType)) { next(new RequestError(403, 'Form access denied.')); return; }
     next();
   });
   router.get('/drafts/:companyId/:formType', (req, res) => {
@@ -46,7 +47,12 @@ export function draftRoutes(db: DatabaseSync) {
       const { attachments: files, companyId: _companyId, ...editable } = data;
       form(editable, true);
       const validated = { ...editable, companyId: req.params.companyId as CompanyId, attachments: await attachments(files, res.locals.user.name) };
-      res.json(transaction(db, () => writeDraft(db, res.locals.user.id, req.params.companyId, expected, validated)));
+      res.json(transaction(db, () => {
+        const actor = res.locals.requireCurrentUser();
+        if (!canUserAccessCompany(actor, req.params.companyId as CompanyId)) throw new RequestError(403, 'Company access denied.');
+        if (!canUserStartForm(actor, req.params.companyId as CompanyId, req.params.formType)) throw new RequestError(403, 'Form access denied.');
+        return writeDraft(db, actor.id, req.params.companyId, expected, validated);
+      }));
     } catch (error) { next(error); }
   });
   router.delete('/drafts/:companyId/:formType', (req, res, next) => {

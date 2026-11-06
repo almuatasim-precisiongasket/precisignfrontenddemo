@@ -1,5 +1,7 @@
 # AGENTS.md — Guidance for Future AI Coding Agents (Codex & Assistants)
 
+For new pilot work, confirm the `Pre-Production` branch and read the [pre-production handoff](docs/PRE_PRODUCTION.md). Keep existing authorization and document rules in force while pilot account and form permissions are designed.
+
 Welcome to **PreciSign**! This document contains critical guidelines, architectural constraints, and business rules for AI coding agents maintaining or expanding this codebase.
 
 ---

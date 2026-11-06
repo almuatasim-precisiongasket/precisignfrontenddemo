@@ -16,6 +16,7 @@ import { dataService } from '../services/repository';
 import {
   filterRequestsByScopeAndUser,
   validateOriginatingCompany,
+  canUserStartForm,
 } from '../utils/companyAccess';
 import { DraftCoordinator } from '../services/draftCoordinator';
 import { LocalActionRepository } from '../services/localActionRepository';
@@ -50,6 +51,8 @@ interface AppContextType {
     | 'requests'
     | 'workflow-settings'
     | 'user-profile'
+    | 'user-directory'
+    | 'company-branding'
     | 'forms-library'
     | 'archive';
   setActiveView: (
@@ -60,6 +63,8 @@ interface AppContextType {
       | 'requests'
       | 'workflow-settings'
       | 'user-profile'
+      | 'user-directory'
+      | 'company-branding'
       | 'forms-library'
       | 'archive'
   ) => void;
@@ -132,7 +137,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { bootstrap: BootstrapData; requests: VersionedRequest[] }; apiRepository?: ApiPreciSignRepository }> = ({ children, apiData, apiRepository }) => {
   const readOnly = Boolean(apiData);
   const [companies, setCompanies] = useState<Company[]>(apiData?.bootstrap.companies || []);
-  const [selectedScope, setSelectedScopeState] = useState<ViewingScope>(apiData?.bootstrap.user.companyId || 'PEW');
+  const [selectedScope, setSelectedScopeState] = useState<ViewingScope>(apiData ? (apiData.bootstrap.companies.find(c => c.id === apiData.bootstrap.user.companyId)?.id || apiData.bootstrap.companies[0]?.id || 'PEG') : 'PEW');
   const [users, setUsers] = useState<UserProfile[]>(apiData ? [apiData.bootstrap.user, ...apiData.bootstrap.users.filter(u => u.id !== apiData.bootstrap.user.id)] : []);
   const [currentUserId, setCurrentUserIdState] = useState<string>(apiData?.bootstrap.user.id || 'user-afzal');
   const [workflows, setWorkflows] = useState<WorkflowConfig[]>(apiData?.bootstrap.workflows || []);
@@ -155,6 +160,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
     | 'requests'
     | 'workflow-settings'
     | 'user-profile'
+    | 'user-directory'
+    | 'company-branding'
     | 'forms-library'
     | 'archive'
   >('dashboard');
@@ -163,6 +170,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
 
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>('PEW-AW-2026-0018');
   const [selectedRequestFormType, setSelectedRequestFormType] = useState<string>('Admin Work Request');
+  useEffect(() => { if (selectedScope === 'PEG') setGroupDraftCompany(null); }, [selectedRequestFormType, selectedScope]);
+
+  // The directory reads live grants. Refresh the workspace snapshot on browsing
+  // screens so those same grants drive form visibility without a new sign-in.
+  useEffect(() => {
+    if (!apiRepository || !['dashboard', 'requests', 'archive', 'forms-library', 'create-request'].includes(activeView)) return;
+    let cancelled = false;
+    let pending = false;
+    async function refreshAccess() {
+      if (pending || !apiRepository) return;
+      pending = true;
+      try {
+        const snapshot = await apiRepository.bootstrap();
+        if (cancelled || snapshot.user.id !== currentUserId) return;
+        const roster = [snapshot.user, ...snapshot.users.filter(user => user.id !== currentUserId)];
+        setUsers(previous => JSON.stringify(previous) === JSON.stringify(roster) ? previous : roster);
+        setCompanies(previous => JSON.stringify(previous) === JSON.stringify(snapshot.companies) ? previous : snapshot.companies);
+        setWorkflows(previous => JSON.stringify(previous) === JSON.stringify(snapshot.workflows) ? previous : snapshot.workflows);
+        setSelectedScopeState(scope => scope === 'PEG' || snapshot.companies.some(company => company.id === scope)
+          ? scope : snapshot.companies[0]?.id ?? 'PEG');
+      } catch {
+        // Retain the current view through transient failures. The API still checks every action.
+      } finally {
+        pending = false;
+      }
+    }
+    void refreshAccess();
+    const timer = window.setInterval(refreshAccess, 30000);
+    window.addEventListener('focus', refreshAccess);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshAccess);
+    };
+  }, [activeView, apiRepository, currentUserId]);
 
   // Load initial data through repository abstraction
   useEffect(() => {
@@ -193,7 +235,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
     };
   }, []);
 
-  const draftCompanyId = selectedScope === 'PEG' ? groupDraftCompany : selectedScope;
+  const draftCompanyId = readOnly && companies.length === 0 ? null : selectedScope === 'PEG' ? groupDraftCompany : selectedScope;
   const draftKey = `${apiRepository ? draftCompanyId : selectedScope}:${currentUserId}`;
   const activeDraftKey = useRef(draftKey);
   activeDraftKey.current = draftKey;
@@ -202,7 +244,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
     let cancelled = false;
     setLoadedDraftKey('');
     setDraftError(null);
-    if (draftCoordinator && !draftCompanyId) return;
+    const draftUser = users.find(user => user.id === currentUserId);
+    if (draftCoordinator && (!draftCompanyId || !draftUser || !canUserStartForm(draftUser, draftCompanyId, 'Admin Work Request'))) return;
     const force = reloadDraftKeys.current.delete(draftKey);
     const loading = draftCoordinator
       ? draftCoordinator.load(draftCompanyId!, currentUserId, force)
@@ -211,7 +254,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
       if (!cancelled) { setDraftFormData(draft); setLoadedDraftKey(draftKey); }
     }).catch(() => { if (!cancelled) setDraftError('Could not load your draft. Your saved data was not changed.'); });
     return () => { cancelled = true; };
-  }, [initialLoaded, selectedScope, currentUserId, draftRetry, draftCompanyId, draftCoordinator]);
+  }, [initialLoaded, selectedScope, currentUserId, draftRetry, draftCompanyId, draftCoordinator, users]);
 
   const setSelectedScope = (scope: ViewingScope) => {
     setSelectedScopeState(scope);
@@ -352,9 +395,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
         : formData.itRequest ? 'IT Request'
         : formData.administrativePayment ? 'Administrative & Payment Request' : 'Admin Work Request';
       const legacy = formType === 'Admin Work Request';
+      const workflow = workflows.find(route => route.companyId === validation.companyId && route.formType === formType);
+      if (apiRepository && !canUserStartForm(currentUser, validation.companyId, formType)) {
+        return { success: false, error: 'You don’t have access to start this form in the selected company.' };
+      }
+      if (apiRepository && !workflow?.stages.length) {
+        return { success: false, error: 'A signing route must be configured for this company and form before sending.' };
+      }
       const input: SubmitInput = { companyId: validation.companyId, formType,
         signerChoices,
-        expectedWorkflowVersion: legacy ? undefined : workflows.find(workflow => workflow.companyId === validation.companyId && workflow.formType === formType)?.version,
+        expectedWorkflowVersion: legacy ? undefined : workflow?.version,
         formData: { dateOfRequest: formData.dateOfRequest, department: formData.department, priority: formData.priority, workDescription: formData.workDescription, documents: formData.documents, administrativePayment: formData.administrativePayment, itRequest: formData.itRequest, cashVoucher: formData.cashVoucher, expenseClaim: formData.expenseClaim },
         attachments, comment, signatureDataUrl: signatureDataUrl || '' };
       const record = draftCoordinator && legacy

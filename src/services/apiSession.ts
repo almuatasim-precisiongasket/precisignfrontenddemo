@@ -1,11 +1,13 @@
 import { ApiError } from './apiTypes';
 import type { BootstrapData, VersionedRequest } from './apiTypes';
 import type { ApiPreciSignRepository } from './apiRepository';
+import type { UserProfile } from '../types';
 
 export type SessionState =
   | { status: 'loading' }
   | { status: 'anonymous' }
   | { status: 'failed'; error: string }
+  | { status: 'password-change'; user: UserProfile; error?: string }
   | { status: 'authenticated'; bootstrap: BootstrapData; requests: VersionedRequest[] };
 
 /** No browser storage or demo fallback. Generation prevents late responses restoring logged-out data. */
@@ -21,12 +23,20 @@ export class ApiSession {
   }
   async restore() {
     const generation = ++this.generation; this.set({ status: 'loading' });
-    try { await this.repository.getCurrentUser(); await this.load(generation); }
+    try {
+      const user = await this.repository.getCurrentUser();
+      if (user.mustChangePassword) { if (generation === this.generation) this.set({ status: 'password-change', user }); return; }
+      await this.load(generation);
+    }
     catch (error) { if (generation === this.generation) this.set(error instanceof ApiError && error.status === 401 ? { status: 'anonymous' } : { status: 'failed', error: 'Could not load the server. Please retry.' }); }
   }
   async login(email: string, password: string) {
     const generation = ++this.generation; this.set({ status: 'loading' });
-    try { await this.repository.login(email, password); await this.load(generation); }
+    try {
+      const user = await this.repository.login(email, password);
+      if (user.mustChangePassword) { if (generation === this.generation) this.set({ status: 'password-change', user }); return; }
+      await this.load(generation);
+    }
     catch (error) { if (generation === this.generation) this.set({ status: 'failed', error: error instanceof ApiError && error.status === 401 ? 'Invalid email or password.' : 'Could not sign in. Please retry.' }); }
   }
   async logout() {

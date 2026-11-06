@@ -61,7 +61,6 @@ export const ReviewSignView: React.FC = () => {
   // Find active request
   const request = companyRequests.find((r) => r.id === selectedRequestId);
 
-  const [comment, setComment] = useState('');
   const [selectedVersion, setSelectedVersion] = useState<number>(request ? request.documentVersion : 1);
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -125,6 +124,9 @@ export const ReviewSignView: React.FC = () => {
   const visibleAttachments = selectedVersion === request.documentVersion
     ? request.attachments
     : request.attachmentVersions?.find(snapshot => snapshot.version === selectedVersion)?.attachments;
+  const submission = request.approvalHistory.find(event => event.action === 'Submitted' && event.version === selectedVersion);
+  const submissionNote = submission?.comments?.replace(/^Resubmitted: /, '').trim();
+  const showSubmissionNote = submissionNote && !/^(Request submitted\.|Official request submitted\.|Request submitted with \d+ attachment\(s\)\.|Resubmitted Version \d+)$/.test(submissionNote);
 
   const currentStep = request.approvalSteps[request.currentStageIndex];
   const isAssignedApprover =
@@ -207,11 +209,10 @@ export const ReviewSignView: React.FC = () => {
     signingRecordTime.current = request.updatedAt; setSignatureModalOpen(true);
   };
 
-  const handleConfirmedApproval = async (signatureDataUrl: string) => {
-    const result = await approveRequest(request.id, comment.trim() || undefined, signatureDataUrl);
+  const handleConfirmedApproval = async (signatureDataUrl: string, note?: string) => {
+    const result = await approveRequest(request.id, note, signatureDataUrl);
     if (result.success) {
       setActionSuccess('Request stage approved and signature recorded.');
-      setComment('');
       setTimeout(() => setActionSuccess(null), 3500);
     } else {
       setActionError(result.error || 'Failed to approve request');
@@ -398,6 +399,12 @@ export const ReviewSignView: React.FC = () => {
           onSignClick={handleApproveClick}
         />
       </div>
+
+      {showSubmissionNote && <section aria-label="Note to signers" className="no-print rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-slate-900">Note to signers</h2>
+        <p className="mt-1 text-xs text-slate-600">{submission?.actionByName} · Version {selectedVersion}</p>
+        <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-800">{submissionNote}</p>
+      </section>}
 
       {/* Split Layout: 62% Document Focus + 38% Approval Controls on Desktop */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
@@ -590,19 +597,6 @@ export const ReviewSignView: React.FC = () => {
             ) : (canSign || canOverride) ? (
               /* ACTIVE ASSIGNED APPROVER ACTIONS */
               <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <label className="block text-[11px] font-semibold text-slate-700">
-                    Approver Comments / Audit Note (Optional):
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={comment}
-                    onChange={(e) => setComment(e.target.value)}
-                    placeholder="Enter review notes, compliance remarks, or conditions..."
-                    className="w-full px-2.5 py-1.5 text-xs border border-[#E2E5E9] rounded focus:outline-none focus:ring-1 focus:ring-[#365C78]"
-                  />
-                </div>
-
                 <div className="space-y-2 pt-1">
                   {/* Approve & Sign Button */}
                   <button
@@ -988,7 +982,8 @@ export const ReviewSignView: React.FC = () => {
           user={currentUser}
           title={signatureAction === 'resubmit' ? 'Sign Corrected Document' : signatureAction === 'override' ? 'Sign & Complete PreciRoute' : 'Sign & Approve Document'}
           confirmLabel="Apply Signature & Save"
-          onConfirm={(signature) => { if (signingRecordTime.current !== request.updatedAt) return Promise.resolve({ success: false, error: 'The route changed. Close this dialog and review the current document before signing again.' }); return signatureAction === 'resubmit' ? handleResubmitSubmit(signature) : signatureAction === 'override' ? handleDirectorOverrideSubmit(signature) : handleConfirmedApproval(signature); }}
+          noteLabel={signatureAction === 'approve' ? 'Signing remark' : undefined}
+          onConfirm={(signature, note) => { if (signingRecordTime.current !== request.updatedAt) return Promise.resolve({ success: false, error: 'The route changed. Close this dialog and review the current document before signing again.' }); return signatureAction === 'resubmit' ? handleResubmitSubmit(signature) : signatureAction === 'override' ? handleDirectorOverrideSubmit(signature) : handleConfirmedApproval(signature, note); }}
         />
       )}
 

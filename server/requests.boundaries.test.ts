@@ -30,6 +30,7 @@ test('attachment limits, authorization, rollback and restart preserve request hi
   const formData = { dateOfRequest: f.dateOfRequest, department: 'Test', priority: 'Medium', workDescription: 'Boundary request', documents: f.documents };
   const input = { companyId: 'PEW', formType: 'Admin Work Request', formData, signatureDataUrl: mark };
   try {
+    assert.equal((await call('/requests/unknown/toString', 0, { expectedRevision: 1 })).status, 404);
     // Parser boundary: exactly 18 MiB reaches validation; one byte more is rejected by Express.
     const rawRequest = (length: number) => {
       const prefix = '{"padding":"'; const suffix = '"}';

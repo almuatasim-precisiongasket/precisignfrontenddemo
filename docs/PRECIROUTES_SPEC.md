@@ -1,5 +1,7 @@
 # PreciRoutes — confirmed product requirements
 
+The [pre-production handoff](PRE_PRODUCTION.md) tracks account onboarding and company/form permissions. It does not amend the confirmed route rules below.
+
 Confirmed by the product owner on 4 November 2026 after the Q1–Q32 interview. This document records the agreed target behavior; it does not claim that it is implemented. Read with tasks/preciroutes.md. Existing T01–T26 evidence remains historical and must not be relabelled as verification of these requirements.
 
 ## Purpose and evidence

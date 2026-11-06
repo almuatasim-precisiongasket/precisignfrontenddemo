@@ -19,8 +19,10 @@
     "test:backup": "tsx --test server/backup.test.ts",
     "dev:server": "tsx server/index.ts",
     "provision:user": "tsx server/provision-user.ts",
+    "provision:pilot": "tsx server/bootstrap-pilot.ts",
+    "seed:pilot-workflows": "tsx server/seed-pilot-workflows.ts",
     "import:workflow": "tsx server/import-workflow.ts",
-    "test:server": "tsx --test server/server.test.ts server/reads.test.ts server/requests.test.ts server/requests.boundaries.test.ts server/drafts.test.ts server/profile.test.ts server/workflows.test.ts",
+    "test:server": "tsx --test server/server.test.ts server/bootstrap-pilot.test.ts server/accountAdmin.test.ts server/pilotAccess.test.ts server/reads.test.ts server/requests.test.ts server/requests.boundaries.test.ts server/drafts.test.ts server/profile.test.ts server/workflows.test.ts server/multiCompanySubmission.test.ts",
     "test:document": "tsx --test src/components/document/AdminWorkRequestDocument.test.ts",
     "test:api": "tsx --test src/services/apiRepository.test.ts src/services/apiSession.test.ts src/services/draftCoordinator.test.ts",
     "build:vercel": "node scripts/build-vercel.mjs"

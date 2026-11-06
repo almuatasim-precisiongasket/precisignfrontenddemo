@@ -1,5 +1,7 @@
 # Local API — Batch 1
 
+**Batch 1 baseline.** See the [local pilot guide](LOCAL_PILOT.md) for the connected runtime and the [pre-production handoff](PRE_PRODUCTION.md) for planned account and access work.
+
 The frontend remains a browser demo. This batch supplies the isolated API foundation and authentication; it does not connect the interface, provide request endpoints or deploy anything.
 
 ## Runtime and startup

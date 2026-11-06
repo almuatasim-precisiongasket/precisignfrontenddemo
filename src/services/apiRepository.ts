@@ -1,10 +1,10 @@
-import type { IPreciSignRepository } from './repository';
-import type { AdminWorkDraft, CompanyId, RequestRecord, UserProfile, ViewingScope, WorkflowConfig } from '../types/index';
+import type { AccountDirectoryEntry, IAccountAdministrationRepository } from './repository';
+import type { AdminWorkDraft, Company, CompanyId, RequestRecord, UserProfile, ViewingScope, WorkflowConfig } from '../types/index';
 import { ApiError } from './apiTypes';
 import type { ApprovalInput, BootstrapData, DraftState, OverrideInput, ReasonInput, RequestActions, ResubmitInput, SubmitInput, VersionedRequest } from './apiTypes';
 
 type Transport = (url: string, init?: RequestInit) => Promise<Response>;
-export class ApiPreciSignRepository implements IPreciSignRepository, RequestActions {
+export class ApiPreciSignRepository implements IAccountAdministrationRepository, RequestActions {
   private actorId?: string;
   constructor(private transport: Transport = (url, init) => fetch(url, init)) {}
   private async call(path: string, method = 'GET', body?: unknown): Promise<unknown> {
@@ -29,6 +29,43 @@ export class ApiPreciSignRepository implements IPreciSignRepository, RequestActi
     return data;
   }
   async login(email: string, password: string) { const data: any = await this.call('/auth/login', 'POST', { email, password }); const user = this.profile(data?.user); this.actorId = user.id; return user; }
+  async signup(input: { name: string; email: string; department: string; password: string; signatureDataUrl?: string }) {
+    await this.call('/auth/signup', 'POST', input);
+  }
+  async changePassword(currentPassword: string, newPassword: string) {
+    await this.call('/auth/change-password', 'POST', { currentPassword, newPassword });
+    this.actorId = undefined;
+  }
+  async listCompanyBranding(): Promise<Company[]> {
+    const data = await this.call('/admin/company-branding');
+    if (!Array.isArray(data)) throw new ApiError(502, 'Invalid company settings response.', 'INVALID_RESPONSE');
+    return data;
+  }
+  async updateCompanyLogo(id: CompanyId, logoDataUrl: string | null): Promise<string | null> {
+    const data = await this.call(`/admin/company-branding/${encodeURIComponent(id)}`, 'PUT', { logoDataUrl }) as { logoDataUrl?: unknown } | null;
+    if (data?.logoDataUrl !== null && typeof data?.logoDataUrl !== 'string') throw new ApiError(502, 'Invalid company settings response.', 'INVALID_RESPONSE');
+    return data.logoDataUrl;
+  }
+  async listAccounts(): Promise<AccountDirectoryEntry[]> {
+    const data = await this.call('/admin/accounts');
+    if (!Array.isArray(data)) throw new ApiError(502, 'Invalid account directory response.', 'INVALID_RESPONSE');
+    return data;
+  }
+  async updateAccount(id: string, update: { email?: string; isDisabled?: boolean }) {
+    await this.call(`/admin/accounts/${encodeURIComponent(id)}`, 'PATCH', update);
+  }
+  async updateGrants(id: string, companyIds: CompanyId[], formsByCompany: Partial<Record<CompanyId, string[]>>) {
+    await this.call(`/admin/accounts/${encodeURIComponent(id)}/grants`, 'PUT', { companyIds, formsByCompany });
+  }
+  async createResetLink(id: string): Promise<string> {
+    const result: any = await this.call(`/admin/accounts/${encodeURIComponent(id)}/reset-link`, 'POST');
+    if (typeof result?.link !== 'string') throw new ApiError(502, 'Invalid reset link response.');
+    return result.link;
+  }
+  async resetPassword(token: string, newPassword: string) {
+    await this.call('/auth/reset-password', 'POST', { token, newPassword });
+    this.actorId = undefined;
+  }
   async getCurrentUser() { const data: any = await this.call('/auth/me'); return this.profile(data?.user); }
   async logout() { await this.call('/auth/logout', 'POST'); }
   async bootstrap(): Promise<BootstrapData> {

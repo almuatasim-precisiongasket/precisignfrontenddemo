@@ -1,5 +1,7 @@
 # Batch 2 contract (version 1)
 
+**Batch contract.** Use the current server handlers to confirm endpoint behavior. Proposed account onboarding and per-company form grants are tracked in the [pre-production handoff](PRE_PRODUCTION.md) and are not additions to this contract.
+
 `src/services/apiTypes.ts` defines the action inputs and versioned request output. Revision tracks persistence conflicts separately from documentVersion and workflowVersion. Existing demo records normalize missing revision to 1 on action; new records begin at revision 1. AppContext invokes LocalActionRepository's action methods; the API adapter implements the same RequestActions contract. The default singleton used for reads/settings/drafts remains local until T16.
 
 ApiPreciSignRepository uses same-origin cookies and never falls back to localStorage. `login`, `getCurrentUser`, `logout` and `bootstrap` are available. List/detail paths match the server. Create/approve/return/reject/resubmit/override methods transport intents and expectedRevision; those server mutation routes are not implemented until T17–T20 and will currently fail. Legacy createRequest/updateRequest throw without sending an HTTP request. Unsupported draft/profile/settings/demo operations fail explicitly until their batches. No code silently substitutes local data.

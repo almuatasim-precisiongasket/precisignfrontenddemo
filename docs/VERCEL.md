@@ -1,5 +1,7 @@
 # Deploy the frontend demo to Vercel
 
+The [public Vercel MVP](https://precisign-frontend-demo.vercel.app/) has previously been deployed in demo mode. The [pre-production handoff](PRE_PRODUCTION.md) tracks a separate setup for a real internal pilot.
+
 The included vercel.json selects Vite, npm run build:vercel and dist. Import the repository into Vercel, use the repository root, and select Node 24.x. Install using npm ci. No API key or database credentials are needed for this demo. Do not add secrets with VITE_ prefixes: Vite exposes those values to browsers.
 
 The build script explicitly selects demo mode and displays a demo notice. This is a browser-local prototype with sample personas; it is not authenticated multi-user company storage. Data belongs to the visitor's browser/origin. Use synthetic information only. This command is separate from npm run build, so existing local API builds retain their behavior. SPA navigation falls back to index.html; /api paths are excluded and have no hosted API in this configuration.

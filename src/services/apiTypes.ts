@@ -1,5 +1,6 @@
 import type { AdminWorkDraft, AdminWorkFormData, AttachmentItem, Company, CompanyId, RequestRecord, UserProfile, WorkflowConfig } from '../types/index';
 import type { ProcessingCommand } from '../utils/routeProcessing';
+import type { SignerChoices } from '../utils/signingSelection';
 
 export type VersionedRequest = RequestRecord & { revision: number };
 export const API_CONTRACT_VERSION = 1 as const;
@@ -7,7 +8,7 @@ export const SUBMITTABLE_FORMS = ['Admin Work Request', 'Administrative & Paymen
 export type SubmittableForm = typeof SUBMITTABLE_FORMS[number];
 export interface BootstrapData { user: UserProfile; companies: Company[]; users: UserProfile[]; workflows: WorkflowConfig[]; }
 export interface SubmitInput {
-  signerChoices?: Record<string, string | null>;
+  signerChoices?: SignerChoices;
   expectedDraftRevision?: number;
   expectedWorkflowVersion?: number;
   companyId: CompanyId;

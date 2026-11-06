@@ -41,7 +41,7 @@ export function RequestDocument({ formType, data, attachments, processing, print
       } : data} />;
     }
     case 'IT Request':
-      return <ITRequestDocument organization={data.companyName} fields={{
+      return <ITRequestDocument organization={data.companyName} logoUrl={data.companyLogoDataUrl} fields={{
         department: data.department,
         requester: data.requesterName,
         date: data.dateOfRequest,

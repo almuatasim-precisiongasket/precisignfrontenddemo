@@ -34,7 +34,7 @@ export function AdministrativePaymentDocument({ data }: { data: AdminWorkFormDat
   return (
     <article className="admin-payment-document" aria-label="Administrative and Payment Request document">
       <header className="admin-payment-header">
-        <CompanyLogoSlot className="admin-payment-logo" />
+        <CompanyLogoSlot className="admin-payment-logo" logoUrl={data.companyLogoDataUrl} />
         <div>
           <p>{data.companyName}</p>
           <h2>Administrative &amp; Payment Request Form</h2>

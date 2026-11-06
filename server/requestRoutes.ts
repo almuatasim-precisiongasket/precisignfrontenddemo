@@ -7,9 +7,9 @@ import { transaction } from './db';
 import { draftRevision, writeDraft } from './drafts';
 import { RequestError, fail, fields, text, bytes, attachments, form } from './requestValidation';
 import { safeProfile } from './auth';
-import { canUserAccessCompany } from '../src/utils/companyAccess';
+import { canUserAccessCompany, canUserStartForm } from '../src/utils/companyAccess';
 import { createNewRequestRecord, approveRequestStage, returnRequestForCorrection, rejectRequest, resubmitCorrectedRequest, completePreciRoute, cancelPreciRoute } from '../src/utils/workflowEngine';
-import type { AdminWorkFormData, AttachmentItem, RequestRecord, WorkflowConfig } from '../src/types/index';
+import type { AdminWorkFormData, AttachmentItem, CompanyId, RequestRecord, WorkflowConfig } from '../src/types/index';
 import { SUBMITTABLE_FORMS } from '../src/services/apiTypes';
 import { recordProcessing, processingLabels, processingRequiresSignature, financeHoldActions } from '../src/utils/routeProcessing';
 import { expenseEvidenceError, preservesExpenseReceipts } from '../src/utils/expenseEvidence';
@@ -26,10 +26,11 @@ export function requestRoutes(db: DatabaseSync) {
       const it = body.formType === 'IT Request';
       const financial = body.formType === 'Cash Voucher' ? 'cashVoucher' : body.formType === 'Expense Claim' ? 'expenseClaim' : undefined;
       const legacy = body.formType === 'Admin Work Request';
-      if (body.companyId !== 'PEW' || !SUBMITTABLE_FORMS.includes(body.formType)) fail('This form is not enabled for the configured pilot.');
+      if (!['PEW', 'ICCL', 'FSG'].includes(body.companyId) || !SUBMITTABLE_FORMS.includes(body.formType)) fail('Choose a legal company and a supported form.');
+      const companyId = body.companyId as CompanyId;
       if (!legacy && expectedDraft !== undefined) fail('This draft revision belongs to the legacy form.');
       const actor = res.locals.user;
-      if (!canUserAccessCompany(actor, body.companyId)) throw new RequestError(403, 'Company access denied.');
+      if (!canUserStartForm(actor, companyId, body.formType)) throw new RequestError(403, 'Company or form access denied.');
       const data = form(body.formData, false, combined, it, financial); await bytes(body.signatureDataUrl, true);
       if (body.comment !== undefined) text(body.comment, 2000, false);
       const files = await attachments(body.attachments, actor.name);
@@ -38,26 +39,37 @@ export function requestRoutes(db: DatabaseSync) {
         if (evidenceError) fail(evidenceError);
       }
       const record = transaction(db, () => {
-        const row = db.prepare('SELECT config FROM workflows WHERE company_id=? AND form_type=?').get(body.companyId, body.formType);
+        const actor = res.locals.requireCurrentUser();
+        if (!canUserStartForm(actor, companyId, body.formType)) throw new RequestError(403, 'Company or form access denied.');
+        const row = db.prepare('SELECT config FROM workflows WHERE company_id=? AND form_type=?').get(companyId, body.formType);
         if (!row) fail('No workflow is configured for this company.');
         let workflow = JSON.parse(String(row!.config)) as WorkflowConfig;
         if (!legacy && workflow.version !== body.expectedWorkflowVersion) throw new RequestError(409, 'The signing route changed. Review the updated route before sending.');
-        const company = db.prepare('SELECT name FROM companies WHERE id=?').get(body.companyId)!;
-        const users = db.prepare('SELECT * FROM users').all().map(safeProfile);
+        const company = db.prepare('SELECT name,logo_data_url FROM companies LEFT JOIN company_logos ON company_id=id WHERE id=?').get(companyId)!;
+        const users = db.prepare('SELECT * FROM account_profiles WHERE COALESCE(is_disabled,0)=0').all().map(safeProfile);
         if (legacy && body.signerChoices !== undefined) fail('Signer selection is unavailable on the legacy form.');
         const selection = applySignerChoices(workflow, users, actor.id, body.signerChoices);
         if (!selection.workflow) throw new RequestError(400, selection.error);
         workflow = selection.workflow;
+        if (workflow.stages.some(stage => stage.assignedUserId && !users.some(user => user.id === stage.assignedUserId && canUserAccessCompany(user, companyId)))) fail('A configured signer is unavailable.');
         if (data.cashVoucher) {
           const recipient = users.find(user => user.id === data.cashVoucher?.recipientUserId);
-          if (!recipient || !canUserAccessCompany(recipient, body.companyId) || recipient.name !== data.cashVoucher.payee) fail('Choose an eligible voucher recipient.');
+          if (!recipient || !canUserAccessCompany(recipient, companyId) || recipient.name !== data.cashVoucher.payee) fail('Choose an eligible voucher recipient.');
         }
         if (workflow.stages.some(stage => stage.assignedUserId === actor.id || (!stage.assignedUserId && users.some(user => user.id === actor.id && user.role === stage.assignedRole)))) {
           fail('The requester cannot also be an approver.');
         }
         if (!workflow.stages.length || workflow.stages.some((stage,index) => stage.isFinalApproval !== (index === workflow.stages.length - 1))) fail('Invalid final approver designation.');
         const prefix = it ? 'IT' : combined ? 'AP' : financial === 'cashVoucher' ? 'CV' : financial === 'expenseClaim' ? 'EC' : 'AW';
-        const result = { ...createNewRequestRecord({ id: `PEW-${prefix}-${new Date().getFullYear()}-${randomUUID()}`, formType: body.formType, formData: { ...data, companyId: body.companyId, companyName: `PEW - ${company.name}`, requesterId: actor.id, requesterName: actor.name }, requester: actor, workflowConfig: workflow, users, attachments: files, comment: body.comment, signatureDataUrl: body.signatureDataUrl }), omittedSigningSteps: selection.omittedSigningSteps, revision: 1 };
+        const result = {
+          ...createNewRequestRecord({
+            id: `${companyId}-${prefix}-${new Date().getFullYear()}-${randomUUID()}`,
+            formType: body.formType,
+            formData: { ...data, companyId, companyName: `${companyId} - ${company.name}`, companyLogoDataUrl: legacy ? undefined : (company.logo_data_url as string | null) ?? undefined, requesterId: actor.id, requesterName: actor.name },
+            requester: actor, workflowConfig: workflow, users, attachments: files, comment: body.comment, signatureDataUrl: body.signatureDataUrl,
+          }),
+          omittedSigningSteps: selection.omittedSigningSteps, revision: 1,
+        };
         db.prepare('INSERT INTO requests VALUES (?,?,?,?,?,?)').run(result.id, result.companyId, actor.id, result.status, 1, JSON.stringify(result));
         if (expectedDraft !== undefined) writeDraft(db, actor.id, result.companyId, expectedDraft, null);
         return result;
@@ -70,7 +82,7 @@ export function requestRoutes(db: DatabaseSync) {
       const action = req.params.action; const body = req.body; const actor = res.locals.user;
       const allowed: Record<string,string[]> = { replace: ['expectedRevision','stageId','newUserId','reason'], 'accept-replacement': ['expectedRevision','accept'], cancel: ['expectedRevision','reason'], approve: ['expectedRevision','comment','signatureDataUrl'], return: ['expectedRevision','reason'], reject: ['expectedRevision','reason'], resubmit: ['expectedRevision','formData','attachments','changeNote','signatureDataUrl'], override: ['expectedRevision','reason','signatureDataUrl'] };
       allowed.process = ['expectedRevision', 'action', 'note', 'signatureDataUrl', 'attachment'];
-      if (!allowed[action]) throw new RequestError(404, 'Action not found.');
+      if (!Object.hasOwn(allowed, action)) throw new RequestError(404, 'Action not found.');
       fields(body, allowed[action]);
       if (!Number.isSafeInteger(body.expectedRevision) || body.expectedRevision < 1) fail('Invalid revision.');
       if (action === 'process') {
@@ -87,6 +99,7 @@ export function requestRoutes(db: DatabaseSync) {
       const files = action === 'resubmit' && body.attachments !== undefined ? await attachments(body.attachments, actor.name) : undefined;
       const evidence = action === 'process' && body.attachment !== undefined ? (await attachments([body.attachment], actor.name))[0] : undefined;
       const updated = transaction(db, () => {
+        const actor = res.locals.requireCurrentUser();
         const row = db.prepare('SELECT * FROM requests WHERE id=?').get(req.params.id);
         if (!row || !canUserAccessCompany(actor, row.company_id as any)) throw new RequestError(404, 'Request not found.');
         const request = JSON.parse(String(row.record)) as RequestRecord & { attachmentVersions?: { version: number; attachments: AttachmentItem[] }[] };
@@ -104,7 +117,7 @@ export function requestRoutes(db: DatabaseSync) {
           const error = expenseEvidenceError(revised.expenseClaim, files ?? request.attachments);
           if (error) fail(error);
         }
-        const targetRow = action === 'replace' ? db.prepare('SELECT * FROM users WHERE id=?').get(body.newUserId) : undefined;
+        const targetRow = action === 'replace' ? db.prepare('SELECT * FROM account_profiles WHERE id=? AND COALESCE(is_disabled,0)=0').get(body.newUserId) : undefined;
         if (action === 'replace' && !targetRow) fail('Replacement user not found.');
         const result = action === 'process' ? recordProcessing(request, actor, body.action, body.note, body.signatureDataUrl, evidence)
           : action === 'replace' ? proposeSignerReplacement(request,actor,safeProfile(targetRow!),body.stageId,body.reason)

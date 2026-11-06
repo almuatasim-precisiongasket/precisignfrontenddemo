@@ -1,4 +1,6 @@
-# PreciSign — Enterprise Approval Journey & Workflow Management System
+# PreciSign — Internal forms and signing
+
+**Preparing for the internal pilot?** Start with the [pre-production handoff](docs/PRE_PRODUCTION.md). The Vercel MVP runs in demo mode. For the existing Express and SQLite setup, see the [local pilot guide](docs/LOCAL_PILOT.md).
 
 PreciSign is a digital request, multi-company workflow approval, and electronic signature platform engineered for **Precision Engineering Group** (Saudi Arabia) and its operating subsidiaries:
 
@@ -23,20 +25,20 @@ PreciSign is a digital request, multi-company workflow approval, and electronic 
    - High-fidelity pixel-accurate preview of official Saudi Arabian company administrative request forms (PR#21-001FA).
    - Dynamic signature placement on paper document surfaces and print-ready layout.
 
-4. **Decoupled Architecture & Backend-Readiness**:
+4. **Demo and connected modes**:
    - Clean abstraction (`IPreciSignRepository`) isolating UI components from storage.
-   - `LocalStoragePreciSignRepository` handles prototype browser storage, structured for seamless replacement by `ApiPreciSignRepository` (Codex backend implementation).
+   - `LocalStoragePreciSignRepository` stores demo data in the browser. Connected mode uses `ApiPreciSignRepository` to talk to the Express and SQLite backend.
 
 5. **Pure Workflow Engine & Version Control**:
    - Supports returns for correction with automatic version bump (v1 → v2).
    - Preserves historical request workflow snapshots even if global template configurations change.
-   - Director Override policy enforcement, self-approval prevention, and full audit trail history.
+   - Assigned final approver completion, explicit bypass reasons, and route history.
 
 ---
 
 ## Technical Stack
 
-- **Frontend**: React 18, TypeScript, Vite
+- **Frontend**: React 19, TypeScript, Vite
 - **Styling**: Tailwind CSS
 - **Icons**: Lucide React
 - **Testing**: Node.js Native Test Runner (`npx tsx --test`)
@@ -49,7 +51,8 @@ PreciSign is a digital request, multi-company workflow approval, and electronic 
 # Start development server on port 3000
 npm run dev
 
-# Run TypeScript build validation
+# Check TypeScript types and build
+npm run lint
 npm run build
 
 # Run unit test suite

@@ -8,6 +8,7 @@ import { SignatureModal } from '../modals/SignatureModal';
 import { canAdministerWorkflows, resolveConfiguredSigner } from '../../utils/workflowAdministration';
 import { applySignerChoices, type SignerChoices as Choices } from '../../utils/signingSelection';
 import { SignerChoices } from './SignerChoices';
+import { RequestCompanyField } from './RequestCompanyField';
 import {
   FileText,
   Printer,
@@ -90,7 +91,7 @@ export const CreateRequestView: React.FC = () => {
 
   const [documents, setDocuments] = useState(
     draftFormData?.documents || {
-      onlineDocumentChamber: true,
+      onlineDocumentChamber: !combined,
       physicalDocumentChamber: false,
       companyDocumentAjeer: false,
       employeeSalaryCertificate: false,
@@ -157,6 +158,7 @@ export const CreateRequestView: React.FC = () => {
     dateOfRequest,
     companyId: resolvedCompany.id,
     companyName: resolvedCompany.fullName,
+    companyLogoDataUrl: resolvedCompany.logoDataUrl,
     requesterId: currentUser.id,
     requesterName: currentUser.name,
     department,
@@ -253,10 +255,7 @@ export const CreateRequestView: React.FC = () => {
     }
     if (combined) {
       const selection = signingWorkflow && applySignerChoices(signingWorkflow, users, currentUser.id, choices);
-      if (!selection || selection.error) {
-        setValidationError(selection?.error ?? 'Ask your administrator to configure a signing route for this form.');
-        return;
-      }
+      if (!selection || selection.error) return;
     }
     if (payment && (!/^\d{1,9}(\.\d{1,2})?$/.test(payment.amount) || Number(payment.amount) <= 0 || (payment.purpose === 'Other' && !payment.otherPurpose?.trim()))) {
       setValidationError('Enter a positive SAR amount and describe the purpose if you selected Other.');
@@ -266,15 +265,13 @@ export const CreateRequestView: React.FC = () => {
     setSignatureModalOpen(true);
   };
 
-  const handleConfirmedSubmit = async (signatureDataUrl: string) => {
+  const handleConfirmedSubmit = async (signatureDataUrl: string, note?: string) => {
     if (submitting.current) return;
     submitting.current = true; setSubmittingNow(true);
     const result = await submitNewRequest(
       previewData,
       attachments,
-      attachments.length > 0
-        ? `Request submitted with ${attachments.length} attachment(s).`
-        : 'Official request submitted.',
+      note,
       signatureDataUrl,
       combined ? choices : undefined
     );
@@ -403,7 +400,7 @@ export const CreateRequestView: React.FC = () => {
         </div>
       )}
 
-      {combined ? <SignerChoices workflow={signingWorkflow} users={users} requester={currentUser} value={choices} onChange={setChoices} /> : <section className="no-print rounded-lg border border-slate-200 bg-white p-4 text-sm" aria-label="PreciRoute signers">
+      {combined ? <SignerChoices form="Administrative & Payment Request" workflow={signingWorkflow} users={users} requester={currentUser} value={choices} onChange={setChoices} /> : <section className="no-print rounded-lg border border-slate-200 bg-white p-4 text-sm" aria-label="PreciRoute signers">
         <h2 className="font-bold text-[#192B3C]">Review signers</h2>
         <ol className="mt-2 space-y-2">
           <li><strong>{currentUser.name}</strong> · Requester (you)</li>
@@ -425,78 +422,57 @@ export const CreateRequestView: React.FC = () => {
           {/* Section 1: Entity & Requester Details */}
           <div className="space-y-4">
             <div className="pb-2 border-b border-[#E2E5E9] flex items-center justify-between">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-[#192B3C]">
-                1. Entity &amp; Requester Details
+              <h2 className="text-sm font-semibold text-workspace-ink">
+                Request details
               </h2>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Date */}
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                <label htmlFor="request-date" className="text-sm font-semibold text-slate-700 flex items-center gap-1">
                   <span>Date of Request</span>
                   <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative">
                   <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
+                    id="request-date"
                     type="text"
                     value={dateOfRequest}
                     onChange={(e) => setDateOfRequest(e.target.value)}
-                    className="w-full pl-9 pr-3 py-1.5 text-xs border border-[#E2E5E9] rounded-md focus:outline-none focus:ring-1 focus:ring-[#365C78]"
+                    className="workspace-control min-h-10 w-full pl-9 pr-3 text-sm"
                   />
                 </div>
               </div>
 
               {/* Department */}
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                <label htmlFor="request-department" className="text-sm font-semibold text-slate-700 flex items-center gap-1">
                   <span>Department</span>
                   <span className="text-rose-500">*</span>
                 </label>
                 <input
+                  id="request-department"
                   type="text"
                   value={department}
                   onChange={(e) => setDepartment(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs border border-[#E2E5E9] rounded-md focus:outline-none focus:ring-1 focus:ring-[#365C78]"
+                  className="workspace-control min-h-10 w-full px-3 text-sm"
                 />
               </div>
 
               {/* Requester (read-only) */}
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700">Requester Name</label>
-                <input
-                  type="text"
-                  value={currentUser.name}
-                  disabled
-                  className="w-full px-3 py-1.5 text-xs border border-slate-200 bg-slate-50 text-slate-600 rounded-md cursor-not-allowed"
-                />
+                <p className="text-sm font-semibold text-slate-700">Requester name</p>
+                <p className="rounded-lg bg-workspace px-3 py-2 text-sm text-workspace-ink">{currentUser.name}</p>
               </div>
 
-              {/* Originating Group Company Select */}
-              <div className="space-y-1 sm:col-span-2 bg-[#F5F6F8] p-3 rounded-md border border-[#E2E5E9]">
-                <label className="text-xs font-bold text-[#192B3C] flex items-center justify-between">
-                  <span>Request company *</span>
-                  {selectedScope === 'PEG' && (
-                    <span className="text-[10px] bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded font-semibold">
-                      Group View Active
-                    </span>
-                  )}
-                </label>
-                <select
-                  value={originatingCompanyId}
-                  onChange={(e) => { setChoices({}); if (connected) selectDraftCompany(e.target.value as CompanyId); else setOriginatingCompanyId(e.target.value as CompanyId); }}
-                  className="w-full px-3 py-1.5 text-xs font-semibold text-[#192B3C] border border-[#CBD5E1] rounded-md bg-white focus:outline-none focus:ring-1 focus:ring-[#365C78]"
-                >
-                  {companies.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.fullName}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  Requests created in PreciSign belong to specific legal subsidiary entities.
-                </p>
+              <div className="sm:col-span-2">
+                <RequestCompanyField form={formName} value={originatingCompanyId} onChange={!connected || selectedScope === 'PEG' ? next => {
+                  setChoices({});
+                  if (connected && !combined) selectDraftCompany(next);
+                  else setOriginatingCompanyId(next);
+                } : undefined} />
               </div>
             </div>
           </div>
@@ -504,33 +480,27 @@ export const CreateRequestView: React.FC = () => {
           {/* Section 2: Priority Selection */}
           <div className="space-y-3">
             <div className="pb-2 border-b border-[#E2E5E9]">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-[#192B3C]">
-                2. Priority &amp; Turnaround Time
+              <h2 id="request-priority" className="text-sm font-semibold text-workspace-ink">
+                Priority
               </h2>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div role="group" aria-labelledby="request-priority" className="grid grid-cols-3 gap-2">
               {(['Urgent', 'Medium', 'Low'] as PriorityLevel[]).map((level) => {
                 const isSelected = priority === level;
                 return (
                   <button
                     key={level}
                     type="button"
+                    aria-pressed={isSelected}
                     onClick={() => setPriority(level)}
-                    className={`p-3 rounded-md border text-left transition-all ${
+                    className={`workspace-control min-h-10 px-2 text-center text-sm font-semibold ${
                       isSelected
-                        ? 'border-[#365C78] bg-[#EBF2F7] text-[#192B3C] ring-1 ring-[#365C78]'
-                        : 'border-[#E2E5E9] hover:bg-[#F9FAFB] text-slate-700'
+                        ? 'border-workspace-teal bg-workspace-tint text-workspace-teal'
+                        : 'text-slate-700'
                     }`}
                   >
-                    <div className="font-bold text-xs">{level}</div>
-                    <div className="text-[10px] text-slate-500 mt-1">
-                      {level === 'Urgent'
-                        ? 'Immediate / < 1 hour'
-                        : level === 'Medium'
-                        ? 'Within 3 days'
-                        : 'Within 7 days'}
-                    </div>
+                    {level}
                   </button>
                 );
               })}
@@ -540,26 +510,22 @@ export const CreateRequestView: React.FC = () => {
           {/* Section 3: Work Description */}
           <div className="space-y-2">
             <div className="pb-2 border-b border-[#E2E5E9] flex items-center justify-between">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-[#192B3C]">
-                3. Work Description
-              </h2>
-              <span className="text-[11px] text-slate-400 font-mono">
-                {workDescription.length} characters
-              </span>
+              <label htmlFor="request-work-description" className="text-sm font-semibold text-workspace-ink">Work description</label>
             </div>
 
             <textarea
+              id="request-work-description"
               rows={4}
               value={workDescription}
               onChange={(e) => setWorkDescription(e.target.value)}
-              placeholder="State the detailed administrative request, justification, and vendor or authority details..."
-              className="w-full px-3 py-2 text-xs border border-[#E2E5E9] rounded-md focus:outline-none focus:ring-1 focus:ring-[#365C78] focus:border-[#365C78] leading-relaxed"
+              placeholder="Describe the work you’re requesting."
+              className="workspace-control w-full px-3 py-2 text-sm leading-relaxed"
             />
           </div>
 
           {combined && <section className="space-y-3 border-t border-slate-200 pt-4 text-sm">
-            <label className="block">Supporting documents
-              <textarea className="mt-1 block w-full rounded border p-2" maxLength={1000} value={documentDescription} onChange={event => setDocumentDescription(event.target.value)} />
+            <label className="block font-semibold">Documents
+              <textarea className="workspace-control mt-1 block w-full p-2 font-normal" placeholder="List the supporting documents, if any." maxLength={1000} value={documentDescription} onChange={event => setDocumentDescription(event.target.value)} />
             </label>
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={!!payment} onChange={event => setPayment(event.target.checked ? { amount: '', transferMode: 'Bank', purpose: 'Government Payment' } : undefined)} />
@@ -588,7 +554,7 @@ export const CreateRequestView: React.FC = () => {
             </>}
           </section>}
           {/* Section 4: Required Documents Checklist (9 Items) */}
-          <div className="space-y-3">
+          {!combined && <div className="space-y-3">
             <div className="pb-2 border-b border-[#E2E5E9] flex items-center justify-between">
               <h2 className="text-xs font-bold uppercase tracking-wider text-[#192B3C]">
                 4. Required Documents Checklist
@@ -649,11 +615,12 @@ export const CreateRequestView: React.FC = () => {
             </div>
           </div>
 
+          }
           {/* Section 5: Supporting Attachments */}
           <div className="space-y-3">
             <div className="pb-2 border-b border-[#E2E5E9] flex items-center justify-between">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-[#192B3C]">
-                5. Attachments ({attachments.length})
+              <h2 className="text-sm font-semibold text-workspace-ink">
+                Attachments ({attachments.length})
               </h2>
             </div>
 
@@ -786,6 +753,7 @@ export const CreateRequestView: React.FC = () => {
           user={currentUser}
           title={`Sign & Submit ${formName}`}
           confirmLabel="Apply Signature & Submit"
+          noteLabel="Note to signers"
           onConfirm={handleConfirmedSubmit}
         />
       )}

@@ -62,6 +62,27 @@ export interface IPreciSignRepository {
   resetToSeedData(): Promise<void>;
 }
 
+/** Account administration exists only in the connected application. */
+export interface AccountDirectoryEntry {
+  id: string;
+  name: string;
+  email: string;
+  department: string;
+  companyGrants: CompanyId[] | null;
+  formGrants: Partial<Record<CompanyId, string[]>> | null;
+  isSuperAdmin: boolean;
+  isDisabled: boolean;
+}
+
+export interface IAccountAdministrationRepository extends IPreciSignRepository {
+  listCompanyBranding(): Promise<Company[]>;
+  updateCompanyLogo(id: CompanyId, logoDataUrl: string | null): Promise<string | null>;
+  listAccounts(): Promise<AccountDirectoryEntry[]>;
+  updateAccount(id: string, update: { email?: string; isDisabled?: boolean }): Promise<void>;
+  updateGrants(id: string, companyIds: CompanyId[], formsByCompany: Partial<Record<CompanyId, string[]>>): Promise<void>;
+  createResetLink(id: string): Promise<string>;
+}
+
 const STORAGE_KEYS = {
   REQUESTS: 'precisign_repo_requests_v2',
   WORKFLOWS: 'precisign_repo_workflows_v2',

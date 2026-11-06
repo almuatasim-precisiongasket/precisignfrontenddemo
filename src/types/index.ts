@@ -3,6 +3,7 @@ export const PARENT_ORGANIZATION_ID = 'PEG' as const;
 export type ViewingScope = typeof PARENT_ORGANIZATION_ID | CompanyId;
 
 export interface Company {
+  logoDataUrl?: string;
   id: CompanyId;
   code: string;
   name: string;
@@ -26,6 +27,10 @@ export interface UserCompanyAccess {
 export type UserRole = 'Admin' | 'General Manager' | 'Director' | 'IT' | 'Finance' | 'HR' | 'Purchase';
 
 export interface UserProfile {
+  companyGrants?: CompanyId[];
+  formGrants?: Partial<Record<CompanyId, string[]>>;
+  isSuperAdmin?: boolean;
+  mustChangePassword?: boolean;
   canReplaceFinalApprover?: boolean;
   id: string;
   name: string;
@@ -80,6 +85,7 @@ export interface AdminWorkFormData {
   dateOfRequest: string;
   companyId: CompanyId;
   companyName: string;
+  companyLogoDataUrl?: string;
   requesterId: string;
   requesterName: string;
   department: string;

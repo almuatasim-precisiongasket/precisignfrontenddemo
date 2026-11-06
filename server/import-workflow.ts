@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { openDatabase } from './db';
 import { saveWorkflowConfig } from './workflows';
-import { canUserAccessCompany } from '../src/utils/companyAccess';
 import type { WorkflowConfig } from '../src/types/index';
 
 const file = process.argv[2];

@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import type { AdminWorkFormData, AttachmentItem, CompanyId } from '../../types';
-import { canUserAccessCompany } from '../../utils/companyAccess';
+import { canUserAccessCompany, canUserStartForm } from '../../utils/companyAccess';
 import { applySignerChoices, type SignerChoices as Choices } from '../../utils/signingSelection';
 import { SignerChoices } from './SignerChoices';
 import { FinancialRequestDocument } from '../document/FinancialRequestDocument';
 import { SignatureModal } from '../modals/SignatureModal';
+import { RequestCompanyField } from './RequestCompanyField';
 import { expenseEvidenceError } from '../../utils/expenseEvidence';
 
 type FinancialForm = 'Cash Voucher' | 'Expense Claim';
@@ -28,13 +29,13 @@ export function FinancialRequestView({ form, onBack }: { form: FinancialForm; on
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [reading, setReading] = useState(false);
   const isVoucher = form === 'Cash Voucher';
-  const eligibleCompanies = companies.filter(company => canUserAccessCompany(currentUser, company.id));
+  const eligibleCompanies = companies.filter(company => canUserStartForm(currentUser, company.id, form));
   const company = eligibleCompanies.find(item => item.id === companyId);
   const eligibleRecipients = company ? users.filter(user => canUserAccessCompany(user, company.id)) : [];
   const route = workflows.find(item => item.companyId === company?.id && item.formType === form);
   const [choices, setChoices] = useState<Choices>({});
   const data: AdminWorkFormData = {
-    companyId: company?.id ?? currentUser.companyId, companyName: company?.fullName ?? '',
+    companyId: company?.id ?? currentUser.companyId, companyName: company?.fullName ?? '', companyLogoDataUrl: company?.logoDataUrl,
     dateOfRequest: date, requesterName: currentUser.name, requesterId: currentUser.id,
     department: currentUser.department || 'Administration', priority: 'Medium', documents: blankDocuments,
     workDescription: isVoucher ? purpose : claim.lines[0]?.particulars ?? '',
@@ -49,7 +50,7 @@ export function FinancialRequestView({ form, onBack }: { form: FinancialForm; on
       : claim.designation.trim() && claim.project.trim() && claim.lines.every(line => line.date && line.particulars.trim() && validAmount(line.amount));
     const selection = route && applySignerChoices(route, users, currentUser.id, choices);
     if (!company || !selection || selection.error) {
-      setError(selection?.error ?? 'Choose a company with a configured signing route and eligible approvers.');
+      setError(company ? '' : 'Select a legal company before sending.');
     } else if (!date || !valid) {
       setError('Complete the form and enter positive amounts with up to two decimal places.');
     } else if (evidenceError) {
@@ -106,9 +107,12 @@ export function FinancialRequestView({ form, onBack }: { form: FinancialForm; on
       </header>
       <div className="it-request-layout grid gap-5 xl:grid-cols-2">
         <section className="no-print workspace-panel space-y-4 p-4 text-sm sm:p-5">
-          {selectedScope === 'PEG' && <label className="block">Company<select className={control} value={companyId} onChange={event => { setCompanyId(event.target.value as CompanyId | ''); setChoices({}); }}>
-            <option value="">Select a company</option>{eligibleCompanies.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select></label>}
+          <RequestCompanyField form={form} value={companyId} onChange={selectedScope === 'PEG' ? next => {
+            setCompanyId(next);
+            setChoices({});
+            setVoucher(previous => ({ ...previous, payee: '', recipientUserId: undefined }));
+            setError('');
+          } : undefined} />
           <label className="block">Date<input className={control} type="date" value={date} onChange={event => setDate(event.target.value)} /></label>
           {isVoucher ? <>
             <label className="block">Payee<select className={control} value={voucher.recipientUserId ?? ''} onChange={event => {
@@ -150,15 +154,15 @@ export function FinancialRequestView({ form, onBack }: { form: FinancialForm; on
             {attachments.map((file, index) => <p key={file.id}>{index + 1}. {file.name} <button type="button" disabled={reading} className="text-rose-700" onClick={() => removeReceipt(index)}>Remove</button></p>)}
           </>}
           <div className="space-y-1 border-t pt-3">
-            <SignerChoices workflow={route} users={users} requester={currentUser} value={choices} onChange={setChoices} />
+            <SignerChoices form={form} workflow={route} users={users} requester={currentUser} value={choices} onChange={setChoices} />
             {error && <p role="alert" className="text-rose-700">{error}</p>}
             <button type="button" className="workspace-primary mt-2 min-h-10 px-4 py-2" onClick={review} disabled={reading}>{reading ? 'Reading receipts…' : 'Sign & send'}</button>
           </div>
         </section>
         <div className="printable-area min-w-0"><FinancialRequestDocument data={data} attachments={attachments} /></div>
       </div>
-      {signing && <SignatureModal isOpen onClose={() => setSigning(false)} title={`Sign ${form}`} user={currentUser} confirmLabel="Sign & send" onConfirm={async signature => {
-        const result = await submitNewRequest(data, attachments, undefined, signature, choices);
+      {signing && <SignatureModal isOpen onClose={() => setSigning(false)} title={`Sign ${form}`} user={currentUser} confirmLabel="Sign & send" noteLabel="Note to signers" onConfirm={async (signature, note) => {
+        const result = await submitNewRequest(data, attachments, note, signature, choices);
         if (result.success && result.newId) openReviewRequest(result.newId);
         if (result.routeChanged) { setSigning(false); setChoices({}); setError(result.error ?? 'Review the updated route.'); }
         return result;

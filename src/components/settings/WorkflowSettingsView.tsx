@@ -49,6 +49,7 @@ export const WorkflowSettingsView: React.FC = () => {
 
   // Synchronize workflow state when changing company, form, or repository workflows
   useEffect(() => {
+    if (connected && selectedCompanyId === 'PEG') return;
     const targetCompanyId: CompanyId = selectedCompanyId === 'PEG' ? 'PEW' : (selectedCompanyId as CompanyId);
     const found = workflows.find(
       (w) => w.companyId === targetCompanyId && w.formType === selectedFormName
@@ -177,6 +178,10 @@ export const WorkflowSettingsView: React.FC = () => {
   const handleSave = async () => {
     if (saving.current) return;
     setValidationError(null); setSaveFeedback(null);
+    if (connected && (selectedCompanyId === 'PEG' || wfConfig.companyId !== selectedCompanyId || wfConfig.formType !== selectedFormName || !canUserAccessCompany(currentUser, wfConfig.companyId))) {
+      setValidationError('Select an authorized company and wait for its signing route to load.');
+      return;
+    }
 
     if (wfConfig.stages.length === 0) {
       setValidationError('Workflow configuration must have at least one stage.');
@@ -222,7 +227,8 @@ export const WorkflowSettingsView: React.FC = () => {
   };
 
   if (connected && !canAdministerWorkflows(currentUser)) return <div className="p-6 text-sm">Workflow administration requires Director or group administrator access.</div>;
-  if (connected && selectedCompanyId !== 'PEW') return <div className="p-6 text-sm">Select PEW company view to configure the Admin pilot workflow.</div>;
+  if (connected && selectedCompanyId === 'PEG') return <div className="p-6 text-sm space-y-3"><p>Select a legal company to configure its signing routes.</p><select aria-label="Company for signing routes" value="" onChange={event => setSelectedCompanyId(event.target.value as CompanyId)} className="border rounded p-2"><option value="" disabled>Select company</option>{companies.filter(company => canUserAccessCompany(currentUser, company.id)).map(company => <option key={company.id} value={company.id}>{company.fullName}</option>)}</select></div>;
+  if (connected && !canUserAccessCompany(currentUser, selectedCompanyId as CompanyId)) return <div className="p-6 text-sm">You do not have access to this company.</div>;
 
   return (
     <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto">
@@ -262,7 +268,7 @@ export const WorkflowSettingsView: React.FC = () => {
       )}
 
       <fieldset disabled={busy} className="border rounded p-3 text-xs space-y-2"><legend>Processing team — read access</legend>
-        {users.filter(user => user.companyId === wfConfig.companyId || user.allowedCompanyIds?.includes(wfConfig.companyId) || user.isGroupAdmin || user.role === 'Director' || user.role === 'General Manager').map(user => <label className="block" key={user.id}><input type="checkbox" checked={wfConfig.processingUserIds?.includes(user.id) || false} onChange={e => setWfConfig(previous => ({ ...previous, processingUserIds: e.target.checked ? [...(previous.processingUserIds || []),user.id] : (previous.processingUserIds || []).filter(id => id !== user.id) }))} /> {user.name}</label>)}
+        {users.filter(user => canUserAccessCompany(user, wfConfig.companyId)).map(user => <label className="block" key={user.id}><input type="checkbox" checked={wfConfig.processingUserIds?.includes(user.id) || false} onChange={e => { const checked = e.target.checked; setWfConfig(previous => ({ ...previous, processingUserIds: checked ? [...(previous.processingUserIds || []),user.id] : (previous.processingUserIds || []).filter(id => id !== user.id) })); }} /> {user.name}</label>)}
       </fieldset>
       {selectedFormName === 'Cash Voucher' && <label className="block rounded border p-3 text-xs">
         <input type="checkbox" checked={wfConfig.allowCashReceiptWaiver ?? false}

@@ -2,6 +2,8 @@ import { randomBytes, randomUUID, scrypt as derive, timingSafeEqual, createHash 
 import { promisify } from 'node:util';
 import type { DatabaseSync } from 'node:sqlite';
 import type { CompanyId, UserProfile, UserRole } from '../src/types/index';
+import { transaction } from './db';
+import { bytes, fields, RequestError, text } from './requestValidation';
 
 const scrypt = promisify(derive);
 const roles: UserRole[] = ['Admin', 'General Manager', 'Director', 'IT', 'Finance', 'HR', 'Purchase'];
@@ -37,8 +39,38 @@ export async function provisionUser(db: DatabaseSync, input: { email: string; na
 export function safeProfile(row: Record<string, unknown>): UserProfile {
   const name = String(row.name);
   return { id: String(row.id), name, email: String(row.email), role: row.role as UserRole, department: String(row.department), companyId: row.company_id as CompanyId,
-    allowedCompanyIds: JSON.parse(String(row.allowed_companies)), isGroupAdmin: row.group_admin === 1, canReplaceFinalApprover: row.route_admin === 1,
+    allowedCompanyIds: JSON.parse(String(row.allowed_companies)),
+    companyGrants: typeof row.company_grants === 'string' ? JSON.parse(row.company_grants) : undefined,
+    formGrants: typeof row.form_grants === 'string' ? JSON.parse(row.form_grants) : undefined,
+    isSuperAdmin: row.is_super_admin === 1, mustChangePassword: row.must_change_password === 1,
+    isGroupAdmin: row.group_admin === 1, canReplaceFinalApprover: row.route_admin === 1,
     initials: name.trim().split(/\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase(), avatarColor: '#365C78' };
+}
+
+export async function registerAccount(db: DatabaseSync, input: unknown) {
+  fields(input, ['name', 'email', 'department', 'password', 'signatureDataUrl']);
+  const body = input as Record<string, unknown>;
+  const name = text(body.name, 150).trim();
+  const department = text(body.department, 150).trim();
+  const email = normalizeEmail(text(body.email, 254));
+  const password = text(body.password, 1024, false);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 12) {
+    throw new RequestError(400, 'Invalid account details.');
+  }
+  const signature = body.signatureDataUrl;
+  if (signature !== undefined) await bytes(signature, true);
+  const hash = await hashPassword(password);
+  const id = randomUUID();
+  transaction(db, () => {
+    // The legacy company column is required by older records. Explicit grants control access.
+    const result = db.prepare(`INSERT INTO users (id,email,name,role,department,company_id,password_hash)
+      VALUES (?, ?, ?, 'Admin', ?, 'PEW', ?) ON CONFLICT(email) DO NOTHING`).run(id, email, name, department, hash);
+    if (result.changes === 0) throw new RequestError(409, 'Account could not be created.');
+    db.prepare('INSERT INTO account_access (user_id) VALUES (?)').run(id);
+    if (typeof signature === 'string') {
+      db.prepare('INSERT INTO user_signatures VALUES (?, ?, ?)').run(id, signature, name);
+    }
+  });
 }
 export function createSession(db: DatabaseSync, userId: string, now = Date.now()) {
   const token = randomBytes(32).toString('hex');
@@ -46,8 +78,66 @@ export function createSession(db: DatabaseSync, userId: string, now = Date.now()
   db.prepare('INSERT INTO sessions VALUES (?,?,?)').run(tokenHash(token), userId, now + sessionLifetime);
   return token;
 }
+
+export async function signIn(db: DatabaseSync, email: string, password: string, dummyHash: string, previousToken: string | undefined, now: () => number) {
+  const credentials = db.prepare('SELECT id, password_hash FROM users WHERE email=?').get(normalizeEmail(email));
+  const valid = await verifyPassword(password, credentials ? String(credentials.password_hash) : dummyHash);
+  if (!credentials || !valid) return null;
+
+  return transaction(db, () => {
+    // Password verification yields. Recheck credentials before creating a session.
+    const current = db.prepare('SELECT id FROM account_profiles WHERE id=? AND email=? AND password_hash=? AND COALESCE(is_disabled,0)=0')
+      .get(credentials.id!, normalizeEmail(email), credentials.password_hash!);
+    if (!current) return null;
+
+    const issuedAt = now();
+    if (previousToken) revokeSession(db, previousToken);
+    const token = createSession(db, String(current.id), issuedAt);
+    const user = sessionUser(db, token, issuedAt);
+    if (!user) throw new Error('New session could not be loaded.');
+    return { token, user };
+  });
+}
+
+export function revokeSession(db: DatabaseSync, token: string) {
+  db.prepare('DELETE FROM sessions WHERE token_hash=?').run(tokenHash(token));
+}
 export function sessionUser(db: DatabaseSync, token: string | undefined, now = Date.now()) {
   if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
-  const row = db.prepare('SELECT users.*, EXISTS(SELECT 1 FROM route_administrators WHERE user_id=users.id) AS route_admin FROM sessions JOIN users ON users.id=sessions.user_id WHERE token_hash=? AND expires_at>?').get(tokenHash(token), now);
+  const row = db.prepare('SELECT profile.*, EXISTS(SELECT 1 FROM route_administrators WHERE user_id=profile.id) AS route_admin FROM sessions JOIN account_profiles profile ON profile.id=sessions.user_id WHERE token_hash=? AND expires_at>? AND COALESCE(profile.is_disabled,0)=0').get(tokenHash(token), now);
   return row ? safeProfile(row) : null;
+}
+
+export async function changePassword(db: DatabaseSync, userId: string, currentPassword: string, newPassword: string, requireCurrentUser: () => UserProfile) {
+  const row = db.prepare('SELECT password_hash FROM users WHERE id=?').get(userId);
+  if (!row || !(await verifyPassword(currentPassword, String(row.password_hash)))) throw new RequestError(403, 'Invalid credentials.');
+  if (newPassword.length < 12 || newPassword.length > 1024) throw new RequestError(400, 'Invalid password.');
+  const hash = await hashPassword(newPassword);
+  transaction(db, () => {
+    requireCurrentUser();
+    const result = db.prepare('UPDATE users SET password_hash=? WHERE id=? AND password_hash=?').run(hash, userId, row.password_hash!);
+    if (result.changes !== 1) throw new RequestError(409, 'Credentials changed.');
+    db.prepare('UPDATE account_access SET must_change_password=0 WHERE user_id=?').run(userId);
+    db.prepare('DELETE FROM sessions WHERE user_id=?').run(userId);
+    db.prepare('DELETE FROM password_resets WHERE user_id=?').run(userId);
+  });
+}
+
+export async function resetPassword(db: DatabaseSync, token: string, password: string, now: () => number) {
+  const invalid = () => new RequestError(400, 'Reset link is invalid or expired.');
+  if (!/^[a-f0-9]{64}$/.test(token)) throw invalid();
+  if (password.length < 12 || password.length > 1024) throw new RequestError(400, 'Invalid password.');
+  const hash = tokenHash(token);
+  const eligible = () => db.prepare(`SELECT r.user_id FROM password_resets r JOIN account_profiles p ON p.id=r.user_id
+    WHERE r.token_hash=? AND r.expires_at>? AND COALESCE(p.is_disabled,0)=0`).get(hash, now());
+  if (!eligible()) throw invalid();
+  const passwordHash = await hashPassword(password);
+  transaction(db, () => {
+    const row = eligible();
+    if (!row) throw invalid();
+    db.prepare('DELETE FROM password_resets WHERE token_hash=?').run(hash);
+    db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(passwordHash, row.user_id!);
+    db.prepare('UPDATE account_access SET must_change_password=0 WHERE user_id=?').run(row.user_id!);
+    db.prepare('DELETE FROM sessions WHERE user_id=?').run(row.user_id!);
+  });
 }

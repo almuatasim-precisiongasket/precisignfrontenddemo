@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { ArrowLeft, Printer } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { CompanyId, PriorityLevel } from '../../types';
-import { canUserAccessCompany } from '../../utils/companyAccess';
+import { canUserStartForm } from '../../utils/companyAccess';
 import { ITRequestDocument, type ITRequestFields } from '../document/ITRequestDocument';
 import { SignatureModal } from '../modals/SignatureModal';
+import { RequestCompanyField } from './RequestCompanyField';
 import { applySignerChoices, type SignerChoices as Choices } from '../../utils/signingSelection';
 import { SignerChoices } from './SignerChoices';
 
@@ -16,7 +17,7 @@ export function ITRequestPreviewView({ onBack }: { onBack: () => void }) {
   const [signing, setSigning] = useState(false);
   const [error, setError] = useState('');
   const groupView = selectedScope === 'PEG';
-  const availableCompanies = companies.filter(company => canUserAccessCompany(currentUser, company.id));
+  const availableCompanies = companies.filter(company => canUserStartForm(currentUser, company.id, 'IT Request'));
   const [companyId, setCompanyId] = useState<CompanyId | ''>('');
   const organization = availableCompanies.find(company => company.id === (groupView ? companyId : selectedScope));
   const workflow = workflows.find(route => route.companyId === organization?.id && route.formType === 'IT Request');
@@ -38,7 +39,7 @@ export function ITRequestPreviewView({ onBack }: { onBack: () => void }) {
   function reviewAndSign() {
     const selection = workflow && applySignerChoices(workflow, users, currentUser.id, choices);
     if (!organization || !selection || selection.error) {
-      setError(selection?.error ?? 'Select a company with a configured IT approver.');
+      setError(organization ? '' : 'Select a legal company before sending.');
     } else if (!fields.date || !fields.department.trim() || !fields.requestType.trim() || !fields.priority || !fields.details.trim() || !fields.justification.trim()) {
       setError('Complete the request fields and choose a priority before sending.');
     } else {
@@ -47,7 +48,7 @@ export function ITRequestPreviewView({ onBack }: { onBack: () => void }) {
     }
   }
 
-  async function submit(signature: string) {
+  async function submit(signature: string, note?: string) {
     if (!organization || !fields.priority) return { success: false, error: 'Review the organization and priority before sending.' };
     const result = await submitNewRequest({
       companyId: organization.id,
@@ -64,7 +65,7 @@ export function ITRequestPreviewView({ onBack }: { onBack: () => void }) {
         businessVisitVisa: false, agencyWakala: false, others: false, othersDescription: '',
       },
       itRequest: { requestType: fields.requestType, justification: fields.justification },
-    }, [], undefined, signature, choices);
+    }, [], note, signature, choices);
     if (result.success && result.newId) openReviewRequest(result.newId);
     if (result.routeChanged) { setSigning(false); setChoices({}); setError(result.error ?? 'Review the updated route.'); }
     return result;
@@ -93,20 +94,11 @@ export function ITRequestPreviewView({ onBack }: { onBack: () => void }) {
         <section aria-label="Request fields" className="no-print workspace-panel space-y-5 p-4 sm:p-5">
           <div className="space-y-4">
             <h2 className="text-base font-bold">Requester information</h2>
-            {groupView ? (
-              <label className="block space-y-1 text-sm font-medium">
-                <span>Organization name</span>
-                <select className={control} value={companyId} onChange={event => { setCompanyId(event.target.value as CompanyId | ''); setChoices({}); }}>
-                  <option value="">Select a subsidiary</option>
-                  {availableCompanies.map(company => <option key={company.id} value={company.id}>{company.fullName}</option>)}
-                </select>
-              </label>
-            ) : (
-              <div className="space-y-1 text-sm">
-                <p className="font-medium">Organization name</p>
-                <p className="rounded-md bg-slate-50 px-3 py-2">{organization?.fullName || 'Unavailable'}</p>
-              </div>
-            )}
+            <RequestCompanyField form="IT Request" value={organization?.id ?? ''} onChange={groupView ? next => {
+              setCompanyId(next);
+              setChoices({});
+              setError('');
+            } : undefined} />
             <label className="block space-y-1 text-sm font-medium">
               <span>Name of the requester</span>
               <input className={control} value={fields.requester} readOnly />
@@ -147,7 +139,7 @@ export function ITRequestPreviewView({ onBack }: { onBack: () => void }) {
             </label>
           </div>
           <div className="space-y-2 border-t border-slate-200 pt-4 text-sm">
-            <SignerChoices workflow={workflow} users={users} requester={currentUser} value={choices} onChange={setChoices} />
+            <SignerChoices form="IT Request" workflow={workflow} users={users} requester={currentUser} value={choices} onChange={setChoices} />
             {error && <p role="alert" className="text-rose-700">{error}</p>}
             <button type="button" onClick={reviewAndSign} className="workspace-primary min-h-10 px-4 py-2">Sign &amp; send</button>
           </div>
@@ -160,11 +152,11 @@ export function ITRequestPreviewView({ onBack }: { onBack: () => void }) {
             <span className="text-xs font-medium text-slate-600">A4 portrait</span>
           </div>
           <div className="it-request-paper-wrap p-2 sm:p-5">
-            <ITRequestDocument fields={fields} organization={organization?.fullName ?? ''} />
+            <ITRequestDocument fields={fields} organization={organization?.fullName ?? ''} logoUrl={organization?.logoDataUrl} />
           </div>
         </section>
       </div>
-      {signing && <SignatureModal isOpen onClose={() => setSigning(false)} user={currentUser} title="Sign IT Request" confirmLabel="Sign & send" onConfirm={submit} />}
+      {signing && <SignatureModal isOpen onClose={() => setSigning(false)} user={currentUser} title="Sign IT Request" confirmLabel="Sign & send" noteLabel="Note to signers" onConfirm={submit} />}
     </div>
   );
 }

@@ -1,5 +1,7 @@
 # Desktop UI proposal — implementation checklist
 
+This checklist records the desktop work. The [pre-production handoff](../docs/PRE_PRODUCTION.md) tracks the next work on accounts, access, email, and company settings.
+
 Planning only. Preview docs/desktop-mockups.html by double-clicking it. Synthetic examples and in-memory interactions; no API or saved records. Review #dashboard and #review. Compact-table toggle tests density. The questions are whether the action hierarchy is understandable and whether the highlighted form/table patterns fit daily use.
 
 The official A4 renderer and finalized approval banner are intentionally represented as placeholders. Reuse the existing real components during approved implementation. This preview does not authorize production UI changes.

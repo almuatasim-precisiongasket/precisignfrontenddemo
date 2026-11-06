@@ -1,5 +1,7 @@
 # Codex Backend Implementation & Handoff Guide
 
+**Historical design proposal.** Use the [local pilot guide](LOCAL_PILOT.md) for the existing Express and SQLite server. Follow the [pre-production handoff](PRE_PRODUCTION.md) for upcoming backend work.
+
 This document provides complete instructions for **Codex** or backend engineers implementing persistent database storage, authentication, and REST API services for PreciSign.
 
 ---

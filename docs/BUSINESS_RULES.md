@@ -1,5 +1,7 @@
 # PreciSign Business Rules & Specification Matrix
 
+For current signing, completion, and replacement rules, use the [PreciRoutes spec](PRECIROUTES_SPEC.md) where it differs from this earlier matrix. Proposed company and form grants are tracked in the [pre-production handoff](PRE_PRODUCTION.md).
+
 This document defines the official business logic, approval rules, and security constraints governing **PreciSign** for Precision Engineering Group.
 
 ---

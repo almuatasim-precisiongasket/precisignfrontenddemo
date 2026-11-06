@@ -1,5 +1,7 @@
 # PreciSign execution plan — Admin Request pilot
 
+**Earlier Admin Request pilot plan.** For the next phase across the four current forms, use the [pre-production handoff](../docs/PRE_PRODUCTION.md).
+
 Prepared 4 November 2026. Local source is authoritative. Read with `AGENTS.md` and `tasks/todo.md`.
 
 ## Purpose and authorization

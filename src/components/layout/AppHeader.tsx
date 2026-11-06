@@ -2,6 +2,7 @@ import { needsMyAction } from '../../utils/actionQueue';
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { CompanyId } from '../../types/index';
+import { AccountMenu } from './AccountMenu';
 import {
   Building2,
   ChevronDown,
@@ -11,9 +12,10 @@ import {
   ShieldCheck,
   Check,
   Menu,
+  PanelLeft,
 } from 'lucide-react';
 
-export const AppHeader: React.FC = () => {
+export const AppHeader: React.FC<{ onSignOut?: () => void; sidebarHidden: boolean; onToggleSidebar: () => void }> = ({ onSignOut, sidebarHidden, onToggleSidebar }) => {
   const {
     readOnly,
     companies,
@@ -63,8 +65,13 @@ export const AppHeader: React.FC = () => {
         >
           <Menu className="w-5 h-5" />
         </button>
+        <button type="button" onClick={onToggleSidebar} aria-controls="workspace-sidebar" aria-expanded={!sidebarHidden}
+          aria-label={sidebarHidden ? 'Show sidebar' : 'Toggle sidebar'} title={sidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
+          className="preci-icon-button hidden shrink-0 md:inline-grid">
+          <PanelLeft aria-hidden="true" />
+        </button>
 
-        <div className="relative min-w-0">
+        {(!readOnly || companies.length > 0) ? <div className="relative min-w-0">
           <button
             onClick={() => setCompanyDropdownOpen(!companyDropdownOpen)}
             aria-expanded={companyDropdownOpen}
@@ -143,11 +150,11 @@ export const AppHeader: React.FC = () => {
               </div>
             </div>
           )}
-        </div>
+        </div> : <span className="truncate text-xs font-semibold text-workspace-muted">Account workspace</span>}
       </div>
 
       {/* Center: Global Search Bar */}
-      <div className="flex-1 max-w-md hidden md:block relative">
+      <div className="flex-1 max-w-xl hidden md:block relative">
         <div className="relative">
           <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-workspace-muted" />
           <input
@@ -262,7 +269,7 @@ export const AppHeader: React.FC = () => {
           </button>
 
           {notificationsOpen && (
-            <div className="absolute top-full right-0 mt-1 w-80 bg-white border border-[#E2E5E9] rounded-lg shadow-xl p-3 z-50">
+            <div className="absolute top-full right-0 mt-1 w-80 max-w-[calc(100vw-5.25rem)] bg-white border border-[#E2E5E9] rounded-lg shadow-xl p-3 z-50">
               <div className="flex items-center justify-between pb-2 border-b border-[#E2E5E9]">
                 <span className="text-xs font-bold text-[#192B3C]">Actionable Items</span>
                 <span className="text-[10px] font-semibold text-[#365C78] bg-[#EBF2F7] px-1.5 py-0.5 rounded">
@@ -300,13 +307,7 @@ export const AppHeader: React.FC = () => {
           )}
         </div>
 
-        {/* User initials badge */}
-        <div
-          className="flex size-8 shrink-0 items-center justify-center rounded-md border border-[#C2D5E3] bg-[#EBF2F7] text-xs font-semibold text-[#192B3C]"
-          title={`${currentUser.name} (${currentUser.role})`}
-        >
-          {currentUser.initials}
-        </div>
+        <AccountMenu onSignOut={onSignOut} />
       </div>
     </header>
   );
