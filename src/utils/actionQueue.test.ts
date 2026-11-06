@@ -9,3 +9,9 @@ test('queue counts unsigned final and replacement responses but not optional com
  r.pendingReplacement={newUserId:'new',oldUserId:'final',stageId:'final',reason:'Unavailable',proposedBy:'admin'};assert.equal(needsMyAction(r,'new'),true);
  r.status='Cancelled';assert.equal(needsMyAction(r,'new'),false);
 });
+
+test('returned routes need action from the original requester only', () => {
+  const request = { ...INITIAL_REQUESTS[0], status: 'Returned for Correction' as const };
+  assert.equal(needsMyAction(request, request.requesterId), true);
+  assert.equal(needsMyAction(request, 'unrelated'), false);
+});

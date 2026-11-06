@@ -1,13 +1,14 @@
 import React from 'react';
 import { RequestRecord } from '../../types/index';
 import { buildApprovalJourney, JourneyMilestone } from '../../utils/approvalJourney';
-import { Check, RotateCcw, XCircle, ArrowRight, CornerDownRight, ShieldCheck, ChevronRight } from 'lucide-react';
+import { Check, RotateCcw, XCircle, PenLine, ShieldCheck, ChevronRight } from 'lucide-react';
 
 interface CompactApprovalChainProps {
   request: RequestRecord;
   currentUserId?: string;
   onOpenDetail?: (request: RequestRecord) => void;
   maxVisible?: number;
+  compact?: boolean;
   showProgressText?: boolean;
 }
 
@@ -16,15 +17,18 @@ export const CompactApprovalChain: React.FC<CompactApprovalChainProps> = ({
   currentUserId,
   onOpenDetail,
   maxVisible = 3,
+  compact = false,
   showProgressText = true,
 }) => {
   const journey = buildApprovalJourney(request, currentUserId);
-  const { milestones, stageCounts, responsibility } = journey;
+  const { milestones, responsibility } = journey;
 
-  // Split milestones for compact overflow display
-  const totalMilestones = milestones.length;
-  const visibleMilestones = totalMilestones > maxVisible ? milestones.slice(0, maxVisible) : milestones;
-  const overflowCount = totalMilestones - visibleMilestones.length;
+  const visibleMilestones = milestones.slice(0, maxVisible);
+  const currentMilestone = milestones.find(milestone => milestone.status === 'current');
+  if (currentMilestone && visibleMilestones.length > 0 && !visibleMilestones.includes(currentMilestone)) {
+    visibleMilestones[visibleMilestones.length - 1] = currentMilestone;
+  }
+  const overflowCount = milestones.length - visibleMilestones.length;
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -37,15 +41,15 @@ export const CompactApprovalChain: React.FC<CompactApprovalChainProps> = ({
     switch (milestone.status) {
       case 'completed':
       case 'submitted':
-        return <Check className="w-2.5 h-2.5 stroke-[2.5]" />;
+        return <Check className="size-3.5 stroke-2" />;
       case 'returned':
-        return <RotateCcw className="w-2.5 h-2.5 stroke-[2.5]" />;
+        return <RotateCcw className="size-3.5 stroke-2" />;
       case 'rejected':
-        return <XCircle className="w-2.5 h-2.5 stroke-[2.5]" />;
+        return <XCircle className="size-3.5 stroke-2" />;
       case 'bypassed':
-        return <ShieldCheck className="w-2.5 h-2.5 stroke-[2.5]" />;
+        return <ShieldCheck className="size-3.5 stroke-2" />;
       case 'current':
-        return <span className="w-1.5 h-1.5 rounded-full bg-white" />;
+        return <PenLine className="size-3.5 stroke-2" />;
       default:
         return <span className="text-[9px] font-semibold">{milestone.participantInitials}</span>;
     }
@@ -55,39 +59,54 @@ export const CompactApprovalChain: React.FC<CompactApprovalChainProps> = ({
     switch (milestone.status) {
       case 'completed':
       case 'submitted':
-        return 'bg-emerald-600 text-white border-emerald-600 shadow-2xs';
+        return compact ? 'border-emerald-700 bg-emerald-700 text-white' : 'bg-workspace-tint text-workspace-teal border-teal-200';
       case 'returned':
-        return 'bg-amber-500 text-white border-amber-500 ring-2 ring-amber-200';
+        return 'bg-amber-50 text-amber-800 border-amber-200';
       case 'rejected':
-        return 'bg-rose-600 text-white border-rose-600';
+        return 'bg-rose-50 text-rose-800 border-rose-200';
       case 'bypassed':
-        return 'bg-slate-400 text-white border-slate-400';
+        return 'bg-slate-100 text-slate-700 border-slate-300';
       case 'current':
+        if (compact) return 'border-blue-700 bg-blue-700 text-white ring-2 ring-blue-200';
         return milestone.isAssignedToCurrentUser
-          ? 'bg-[#365C78] text-white border-[#192B3C] ring-2 ring-[#365C78]/40 ring-offset-1 font-bold'
-          : 'bg-[#365C78] text-white border-[#365C78] ring-2 ring-sky-200';
+          ? 'bg-workspace-teal text-white border-workspace-teal ring-2 ring-teal-200 ring-offset-1'
+          : 'bg-workspace-steel text-white border-workspace-steel';
       case 'waiting':
       default:
-        return 'bg-slate-100 text-slate-400 border-slate-200';
+        return 'bg-white text-slate-600 border-slate-300';
     }
   };
 
   const signed = request.approvalSteps.filter(step => step.status === 'Approved').length;
   const bypassed = request.approvalSteps.filter(step => step.status === 'Bypassed').length;
-  const label = (m: JourneyMilestone) => m.status === 'submitted' ? 'Submitted' : m.status === 'completed' ? 'Signed' : m.status === 'bypassed' ? 'Bypassed' : m.status === 'current' ? 'Awaiting sign' : m.status === 'returned' ? 'Correction' : m.status === 'rejected' ? 'Rejected' : m.statusLabel === 'Closed' ? 'Closed' : 'Waiting';
+  const label = (m: JourneyMilestone) => m.status === 'submitted' ? 'Submitted' : m.status === 'completed' ? 'Signed' : m.status === 'bypassed' ? 'Bypassed' : m.status === 'current' ? (compact ? 'Awaiting' : 'Awaiting sign') : m.status === 'returned' ? 'Correction' : m.status === 'rejected' ? 'Rejected' : m.statusLabel === 'Closed' ? 'Closed' : 'Waiting';
   return <button type="button" onClick={handleClick}
     aria-label={`Approval Journey for ${request.id}: ${milestones.map(m => `${m.participantName}: ${m.statusLabel}`).join('; ')}. Open full journey.`}
-    className="group w-full min-w-[250px] max-w-[340px] rounded-lg p-2 -mx-2 text-left transition-colors duration-150 hover:bg-teal-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#365C78]">
+    className={`workspace-control group w-full max-w-96 text-left ${compact ? "min-w-52 border-transparent bg-transparent px-0.5 py-1" : "min-w-60 p-2.5"}`}>
     <span className="flex items-start">
-      {visibleMilestones.map((m,i) => <React.Fragment key={m.id}>
-        {i > 0 && <span aria-hidden="true" className="h-px flex-1 min-w-2 bg-slate-200 mt-3.5 mx-1"/>}
-        <span title={`${m.participantName} · ${m.participantRole} · ${m.statusLabel}`} className="flex w-[78px] shrink-0 flex-col items-center">
-          <span className={`w-7 h-7 rounded-full border flex items-center justify-center ${getMilestoneStyle(m)}`}>{getMilestoneIcon(m)}</span>
-          <span className="mt-1.5 max-w-full truncate text-xs font-semibold text-slate-800">{m.participantName}</span>
-          <span className="text-[10px] text-slate-500 whitespace-nowrap">{label(m)}</span>
-        </span>
-      </React.Fragment>)}
+      {visibleMilestones.map((m, i) => {
+        const next = visibleMilestones[i + 1];
+        const hasGap = next && milestones.indexOf(next) - milestones.indexOf(m) > 1;
+        const signedLink = !hasGap && (m.status === 'submitted' || m.status === 'completed');
+        return <span key={m.id} aria-current={m.status === 'current' ? 'step' : undefined} title={`${m.participantName} · ${m.participantRole} · ${m.statusLabel}`} className="relative flex min-w-0 flex-1 flex-col items-center px-1 text-center">
+          {next && <span aria-hidden="true" className={`absolute border-t ${compact ? "left-[calc(50%+10px)] top-2.5 w-[calc(100%-20px)]" : "left-[calc(50%+17px)] top-3.5 w-[calc(100%-34px)]"} ${compact && signedLink ? "border-emerald-500" : "border-slate-300"} ${hasGap ? 'border-dashed' : ''}`} />}
+          <span aria-hidden="true" className={`flex items-center justify-center rounded-full border ${compact ? "size-5" : "size-7"} ${getMilestoneStyle(m)}`}>{getMilestoneIcon(m)}</span>
+          <span className={`max-w-full font-semibold leading-tight text-workspace-ink [overflow-wrap:anywhere] ${compact ? "mt-1 text-[11px]" : "mt-1.5 text-xs"}`}>{m.participantName}</span>
+          <span className={`mt-0.5 text-[11px] leading-tight ${m.status === 'current' ? 'font-semibold text-workspace-steel' : 'text-slate-600'}`}>{label(m)}</span>
+        </span>;
+      })}
     </span>
-    {showProgressText && <span className="mt-2 flex items-center justify-between gap-2 border-t border-slate-100 pt-1.5 text-[11px] text-slate-500"><span>{signed}/{request.approvalSteps.length} approvals signed{bypassed ? ` · ${bypassed} bypassed` : ''}</span><span className="font-medium text-[#365C78]">{overflowCount ? `+${overflowCount} more · ` : ''}View journey →</span></span>}
+    {compact && overflowCount > 0 && <span className="mt-1 block text-center text-[11px] font-semibold text-workspace-steel">+{overflowCount} more · View journey</span>}
+    {!compact && showProgressText && (
+      <span className="mt-2 block border-t border-workspace-line pt-1.5 text-[11px] text-workspace-muted">
+        {request.status === 'Pending Approval' && responsibility.responsiblePersonName && (
+          <span className="mb-1 block font-semibold text-workspace-ink">{currentMilestone?.isAssignedToCurrentUser ? 'Your signature is next' : `Waiting for ${responsibility.responsiblePersonName}`}</span>
+        )}
+        <span className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+          <span>{signed}/{request.approvalSteps.length} approvals signed{bypassed ? ` · ${bypassed} bypassed` : ''}</span>
+          <span className="inline-flex items-center gap-1 font-semibold text-workspace-steel">{overflowCount ? `+${overflowCount} more · ` : ''}View journey <ChevronRight aria-hidden="true" className="size-3" /></span>
+        </span>
+      </span>
+    )}
   </button>;
 };

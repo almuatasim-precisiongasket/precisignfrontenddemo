@@ -2,7 +2,9 @@
 
 ## PreciRoutes implementation update — 4 November 2026
 
-PreciRoutes supports early final signing, explicit final completion/bypass, requester cancellation, signer replacement and processing-team read access. Completed signing retains stored `Approved` for compatibility; it does not mean department work fulfillment. A separate UTF-8 text route summary can be downloaded from completed review screens; the official form uses the existing print-to-PDF flow. Supporting attachments remain separate.
+PreciRoutes supports early final signing, explicit final completion/bypass, requester cancellation, signer replacement and processing-team read access. Completed signing retains stored `Approved` for compatibility; it does not mean department work fulfillment. Review screens can download the selected document version as a PDF in connected mode. The completed route summary and supporting attachments are separate downloads.
+
+PDF generation uses Chromium on the API host. Install it with `npx playwright-core install chromium`, or set `PRECISIGN_PDF_CHROMIUM` to a compatible executable. Windows also falls back to installed Microsoft Edge. The API host must be able to reach the configured `APP_ORIGIN`.
 
 Schema version 3 adds `route_administrators`. Existing records and users are preserved. Final-replacement authority is an explicit local operational grant, independent of Director/workflow-admin status: `npx tsx server/route-admin.ts grant USER_ID` (or `revoke USER_ID`), using DATABASE_PATH. No real permission grant was performed. Intermediate replacement uses existing workflow-administration authority. Final replacements require acceptance; the original signer remains assigned until acceptance, and a decline leaves that assignment intact. Signed participants cannot be replaced.
 

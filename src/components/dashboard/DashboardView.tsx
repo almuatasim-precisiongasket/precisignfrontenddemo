@@ -1,32 +1,41 @@
+import { getInitials } from '../../utils/approvalJourney';
 import { needsMyAction } from '../../utils/actionQueue';
+import { needsProcessingAction } from '../../utils/routeProcessing';
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { RequestRecord, PriorityLevel } from '../../types/index';
 import {
   Inbox,
+  FileText,
   AlertTriangle,
   RotateCcw,
   CheckCircle2,
   Search,
   SlidersHorizontal,
   ChevronDown,
-  ArrowUpDown,
+  RefreshCw,
   Plus,
   ArrowRight,
   ExternalLink,
   Clock,
   Check,
   Building,
+  ChevronRight,
+  FilePlus2,
+  LayoutGrid,
+  Zap,
+  BarChart3,
 } from 'lucide-react';
+import { companyForms } from '../library/FormsLibraryView';
 import { CompactApprovalChain } from '../common/CompactApprovalChain';
 import { ApprovalJourneyModal } from '../common/ApprovalJourneyModal';
 import { ApprovalJourneyPanel } from '../journey/ApprovalJourneyPanel';
 
 export const DashboardView: React.FC = () => {
   const {
+    activeView,
     currentUser,
     draftFormData,
-    workflows,
     readOnly: connected,
     refreshRequests,
     companyRequests,
@@ -41,6 +50,7 @@ export const DashboardView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [formFilter,setFormFilter] = useState('ALL');
   const [statusFilter,setStatusFilter] = useState('ALL');
+  const hasFilters = Boolean(searchQuery.trim()) || formFilter !== 'ALL' || statusFilter !== 'ALL';
   const [refreshError, setRefreshError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
@@ -48,7 +58,7 @@ export const DashboardView: React.FC = () => {
   const [sortBy, setSortBy] = useState<'date-desc' | 'date-asc' | 'priority' | 'id'>('date-desc');
   const [selectedJourneyRequest, setSelectedJourneyRequest] = useState<RequestRecord | null>(null);
   const [internalTab, setInternalTab] = useState<'pending' | 'my' | 'all' | 'returned' | 'approved'>(
-    requestsFilter === 'pending'
+    activeView === 'dashboard' ? 'all' : requestsFilter === 'pending'
       ? 'pending'
       : requestsFilter === 'my'
       ? 'my'
@@ -62,23 +72,33 @@ export const DashboardView: React.FC = () => {
     id: true,
     requester: true,
     currentApprover: true,
-    prioritySla: true,
+    prioritySla: false,
     status: true,
-    createdAt: true,
+    createdAt: false,
   });
 
   // Calculate dynamic KPIs from shared company requests
   const pendingForMeRequests = useMemo(() => {
     return companyRequests.filter(
-      (r) => needsMyAction(r,currentUser.id)
+      (r) => needsMyAction(r, currentUser)
     );
   }, [companyRequests, currentUser]);
 
-  const urgentOrOverdueRequests = useMemo(() => {
-    return companyRequests.filter(
-      (r) => r.formData.priority === 'Urgent' && r.status === 'Pending Approval'
-    );
-  }, [companyRequests]);
+  function actionFor(request: RequestRecord) {
+    if (request.status === 'Returned for Correction' && request.requesterId === currentUser.id) {
+      return { title: 'A request needs your corrections', label: 'Review correction' };
+    }
+    if (needsProcessingAction(request, currentUser)) {
+      return { title: 'A request needs processing', label: 'Process request' };
+    }
+    if (request.pendingReplacement?.newUserId === currentUser.id && request.status === 'Pending Approval') {
+      return { title: 'An assignment needs your response', label: 'Respond to assignment' };
+    }
+    if (needsMyAction(request, currentUser)) {
+      return { title: 'A route needs your signature', label: 'Review & sign' };
+    }
+    return { title: request.formType, label: 'View details' };
+  }
 
   const returnedRequests = useMemo(() => {
     return companyRequests.filter((r) => r.status === 'Returned for Correction');
@@ -94,11 +114,17 @@ export const DashboardView: React.FC = () => {
 
   // Keep internal tab in sync if sidebar filter changed
   React.useEffect(() => {
+    if (activeView === 'dashboard') return;
     if (requestsFilter === 'pending') setInternalTab('pending');
     else if (requestsFilter === 'my') setInternalTab('my');
     else if (requestsFilter === 'approved') setInternalTab('approved');
     else if (requestsFilter === 'all') setInternalTab('all');
-  }, [requestsFilter]);
+  }, [activeView, requestsFilter]);
+
+  function selectTab(tab: typeof internalTab) {
+    setInternalTab(tab);
+    if (activeView === 'requests' && tab !== 'returned') setRequestsFilter(tab);
+  }
 
   // Filter & sort requests for the operational table
   const filteredRequests = useMemo(() => {
@@ -145,6 +171,9 @@ export const DashboardView: React.FC = () => {
     return sorted;
   }, [internalTab, pendingForMeRequests, myRequests, returnedRequests, approvedRequests, companyRequests, searchQuery, sortBy, formFilter, statusFilter]);
 
+  const isRecentView = activeView === 'dashboard' && internalTab === 'all' && !hasFilters && sortBy === 'date-desc';
+  const displayedRequests = isRecentView ? filteredRequests.slice(0, 5) : filteredRequests;
+
   const getSlaDescription = (priority: PriorityLevel) => {
     switch (priority) {
       case 'Urgent':
@@ -159,144 +188,177 @@ export const DashboardView: React.FC = () => {
   };
 
   return (
-    <div className="p-3.5 sm:p-6 md:p-8 space-y-4 sm:space-y-6 max-w-[1600px] mx-auto">
+    <div className="p-3.5 sm:p-6 space-y-5 max-w-[1720px] mx-auto">
       {/* Top Section: Operational Status & Primary Action */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-[#E2E5E9]">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
+          <p className="mb-1.5 text-xs font-semibold text-workspace-steel">Operational inbox</p>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#192B3C]">
-              Hello, {currentUser.name.split(' ')[0]}
+            <h1 className="text-2xl font-bold tracking-tight text-workspace-ink sm:text-3xl">
+              Requests, approvals and signing
             </h1>
-            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-[#EBF2F7] text-[#365C78] border border-[#C2D5E3]">
+            <span className="rounded-md border border-workspace-line bg-white px-2 py-0.5 text-xs font-semibold text-workspace-steel">
               {selectedCompany.code}
             </span>
           </div>
-          <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5">
-            Your requests and next steps · <strong className="text-[#192B3C]">{currentUser.name}</strong> ({currentUser.role} · {currentUser.department}).
+          <p className="mt-1.5 text-sm text-workspace-muted">
+            Create, review and track company forms in one place.
           </p>
         </div>
 
-        {connected && <button disabled={refreshing} className="text-xs underline" onClick={async () => {
-          setRefreshing(true); setRefreshError('');
-          try { await refreshRequests(); } catch { setRefreshError('Could not refresh requests. Your current list is retained. Please retry.'); }
-          finally { setRefreshing(false); }
-        }}>{refreshing ? 'Refreshing…' : 'Refresh requests'}</button>}
-        <button
-          onClick={() => {
-            setSelectedRequestFormType('Admin Work Request');
-            setActiveView('create-request');
-          }}
-          className="flex items-center justify-center gap-2 px-3.5 py-2 bg-[#365C78] hover:bg-[#2A4A62] text-white rounded-md text-xs font-semibold shadow-xs transition-colors w-full sm:w-auto shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New PreciRoute</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+          {connected && <button type="button" disabled={refreshing} className="workspace-control inline-flex min-h-10 items-center gap-2 px-3 text-xs font-semibold" onClick={async () => {
+            setRefreshing(true); setRefreshError('');
+            try { await refreshRequests(); } catch { setRefreshError('Could not refresh requests. Your current list is retained. Please retry.'); }
+            finally { setRefreshing(false); }
+          }}><RefreshCw aria-hidden="true" className={`size-4 text-workspace-steel ${refreshing ? 'motion-safe:animate-spin' : ''}`} />{refreshing ? 'Refreshing…' : 'Refresh requests'}</button>}
+          <button type="button" onClick={() => setActiveView('forms-library')}
+            className="workspace-primary inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap bg-linear-to-r from-[#00657a] to-[#087b79] px-5 text-sm shadow-sm">
+            <Plus aria-hidden="true" className="size-4" />
+            New PreciRoute
+          </button>
+        </div>
       </div>
 
       {refreshError && <p role="alert" className="text-xs text-rose-700">{refreshError}</p>}
-      <div className="grid grid-cols-4 bg-white rounded-lg border border-slate-200 divide-x divide-slate-200">
-        {[['Needs my action',pendingForMeRequests.length,'pending'],['My active routes',myRequests.filter(r => r.status === 'Pending Approval').length,'my'],['Returned to me',returnedRequests.filter(r => r.requesterId === currentUser.id).length,'returned'],['Signing completed',approvedRequests.length,'approved']].map(([label,count,tab]) => <button key={String(tab)} onClick={() => { setInternalTab(tab as typeof internalTab); if(tab !== 'returned')setRequestsFilter(tab as 'pending'|'my'|'approved'); }} className="p-5 text-left transition-colors duration-150 hover:bg-teal-50/70 focus-visible:outline-2 focus-visible:outline-[#365C78]"><strong className="block text-3xl tabular-nums text-[#192B3C]">{count}</strong><span className="text-sm text-slate-600">{label}</span></button>)}
-      </div>
-      {pendingForMeRequests[0] && <div className="flex items-center justify-between gap-4 rounded-lg border border-teal-200 bg-teal-50 p-4"><div><strong>{pendingForMeRequests[0].pendingReplacement?.newUserId === currentUser.id ? 'An assignment needs your response' : 'A route needs your signature'}</strong><p className="text-sm text-slate-600">{pendingForMeRequests[0].id}</p></div><button className="rounded bg-[#192B3C] px-5 py-2 text-sm font-semibold text-white" onClick={() => openReviewRequest(pendingForMeRequests[0].id)}>Review route →</button></div>}
-      <section aria-label="Company forms"><div className="flex justify-between items-center mb-3"><h2 className="text-xl font-bold">Company forms</h2><button className="text-sm text-[#365C78] font-semibold" onClick={() => setActiveView('forms-library')}>Browse library →</button></div><div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2 flex items-center justify-between rounded-lg border border-teal-300 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"><div><h3 className="font-bold text-lg flex items-center gap-3"><span className="inline-flex p-2 rounded-lg bg-teal-50 text-teal-700"><Inbox className="w-5 h-5" aria-hidden="true" /></span>Admin Work Request</h3><p className="text-sm text-slate-500">Documents, letters and administrative services</p><span className="text-xs text-teal-700">{selectedCompany.code} · {workflows.some(w => w.companyId === selectedCompany.id && w.formType === 'Admin Work Request') ? 'Ready to use' : 'Select a configured company'}</span></div><button className="rounded bg-[#192B3C] text-white px-4 py-2 text-sm" onClick={() => {setSelectedRequestFormType('Admin Work Request');setActiveView('create-request');}}>Start request →</button></div>
-        <div className="rounded-lg border border-slate-200 bg-white p-5"><h3 className="font-semibold">{draftFormData ? 'Continue your draft' : 'Ready when you are'}</h3><p className="text-sm text-slate-500 mt-1">Admin Work Request</p><button className="mt-3 text-sm text-[#365C78] font-semibold" onClick={() => setActiveView('create-request')}>{draftFormData ? 'Resume draft →' : 'Open form →'}</button></div>
-      </div></section>
-      <h2 className="text-xl font-bold">Recent PreciRoutes</h2>
+      <section aria-label="Request summary" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {([
+          ['Needs my action', pendingForMeRequests.length, 'pending', Inbox, 'inbox'],
+          ['My requests', myRequests.length, 'my', FileText, 'open'],
+          ['Returned requests', returnedRequests.length, 'returned', RotateCcw, 'returned'],
+          ['Signing completed', approvedRequests.length, 'approved', CheckCircle2, 'complete'],
+        ] as const).map(([label, count, tab, Icon, tone]) => (
+          <button type="button" key={tab} aria-pressed={internalTab === tab}
+            onClick={() => selectTab(tab)}
+            className="inbox-stat flex min-w-0 items-center gap-3 rounded-xl border p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-workspace-steel"
+            data-tone={tone}>
+            <span className="inbox-stat-icon grid size-10 shrink-0 place-items-center rounded-lg sm:size-12">
+              <Icon aria-hidden="true" className="size-5" />
+            </span>
+            <span className="relative min-w-0 flex-1 text-workspace-ink">
+              <span className="block text-xs font-semibold sm:text-sm">{label}</span>
+              <strong className="block text-2xl leading-tight font-bold tabular-nums sm:text-3xl">{count}</strong>
+            </span>
+            <ChevronRight aria-hidden="true" className="relative hidden size-4 shrink-0 sm:block" />
+          </button>
+        ))}
+      </section>
+
+      <section aria-label="Company forms" className="grid gap-4 xl:grid-cols-[minmax(220px,1fr)_minmax(0,2.45fr)]">
+        <button type="button" onClick={() => setActiveView('forms-library')}
+          className="flex min-h-22 items-center gap-4 rounded-xl bg-linear-to-br from-[#315872] to-[#092b45] px-5 py-4 text-left text-white shadow-sm hover:from-[#28677a] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-workspace-steel">
+          <FilePlus2 aria-hidden="true" className="size-9 shrink-0 text-cyan-200" />
+          <span className="flex-1"><strong className="block text-base">Create a new PreciRoute</strong><span className="mt-1 block text-xs text-slate-100">Start a request using a company form.</span></span>
+          <ArrowRight aria-hidden="true" className="size-8 shrink-0 rounded-full bg-white/12 p-2" />
+        </button>
+        <div className="min-w-0">
+          <h2 className="mb-2 text-sm font-bold text-workspace-ink">Company forms</h2>
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+            {companyForms.map(({ name, icon: Icon }) => (
+              <button type="button" key={name} className="workspace-control flex min-h-14 items-center gap-2 px-2.5 text-left text-xs font-semibold shadow-sm"
+                onClick={() => { setSelectedRequestFormType(name); setActiveView('create-request'); }}>
+                <Icon aria-hidden="true" className="size-5 shrink-0 text-workspace-teal" />
+                {name}
+              </button>
+            ))}
+            <button type="button" onClick={() => setActiveView('forms-library')} className="workspace-control flex min-h-14 items-center gap-2 bg-workspace px-2.5 text-left text-xs font-semibold shadow-sm">
+              <LayoutGrid aria-hidden="true" className="size-5 shrink-0 text-workspace-teal" />
+              <span>Forms library<span className="block font-normal text-workspace-muted">View all forms</span></span>
+            </button>
+          </div>
+        </div>
+      </section>
+      {draftFormData && <button type="button" className="workspace-control min-h-9 px-3 text-sm font-semibold"
+        onClick={() => { setSelectedRequestFormType('Admin Work Request'); setActiveView('create-request'); }}>Resume Admin Work Request draft →</button>}
+      <div className="grid min-w-0 items-start gap-4 min-[1560px]:grid-cols-[minmax(0,1fr)_210px]">
       {/* Main Operational Table Container */}
-      <div className="bg-white border border-[#E2E5E9] rounded-lg overflow-hidden shadow-xs">
+      <div className="workspace-panel min-w-0" aria-label="Recent requests">
         {/* Table Controls Bar: Operational Filter Tabs + Search + Sort + Columns */}
-        <div className="p-3 sm:p-3.5 border-b border-[#E2E5E9] flex flex-col md:flex-row md:items-center justify-between gap-3 bg-[#F9FAFB]">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-t-xl border-b border-workspace-line px-3 py-3">
           {/* Segmented Filter Tabs */}
-          <div className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0 scrollbar-none shrink-0">
+          <div role="group" aria-label="Request views" className="flex max-w-full items-center gap-1 overflow-x-auto rounded-lg bg-workspace p-1 [&_button:focus-visible]:outline-2 [&_button:focus-visible]:-outline-offset-2 [&_button:focus-visible]:outline-workspace-steel">
             <button
-              onClick={() => {
-                setInternalTab('pending');
-                setRequestsFilter('pending');
-              }}
+              aria-pressed={internalTab === 'all'}
+              onClick={() => selectTab('all')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
-                internalTab === 'pending'
-                  ? 'bg-[#365C78] text-white shadow-xs'
+                internalTab === 'all'
+                  ? 'bg-[#12374d] text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
-              Awaiting Action ({pendingForMeRequests.length})
+              {activeView === 'dashboard' ? 'Recent requests' : 'All routes'} ({companyRequests.length})
             </button>
             <button
-              onClick={() => {
-                setInternalTab('my');
-                setRequestsFilter('my');
-              }}
+              aria-pressed={internalTab === 'pending'}
+              onClick={() => selectTab('pending')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                internalTab === 'pending'
+                  ? 'bg-[#12374d] text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              Needs my action ({pendingForMeRequests.length})
+            </button>
+            <button
+              aria-pressed={internalTab === 'my'}
+              onClick={() => selectTab('my')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
                 internalTab === 'my'
-                  ? 'bg-[#365C78] text-white shadow-xs'
+                  ? 'bg-[#12374d] text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
               My Requests ({myRequests.length})
             </button>
             <button
+              aria-pressed={internalTab === 'returned'}
               onClick={() => setInternalTab('returned')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
                 internalTab === 'returned'
-                  ? 'bg-[#365C78] text-white shadow-xs'
+                  ? 'bg-[#12374d] text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
               Returned ({returnedRequests.length})
             </button>
             <button
-              onClick={() => {
-                setInternalTab('all');
-                setRequestsFilter('all');
-              }}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
-                internalTab === 'all'
-                  ? 'bg-[#365C78] text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-              }`}
-            >
-              All Requests ({companyRequests.length})
-            </button>
-            <button
-              onClick={() => {
-                setInternalTab('approved');
-                setRequestsFilter('approved');
-              }}
+              aria-pressed={internalTab === 'approved'}
+              onClick={() => selectTab('approved')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap shrink-0 ${
                 internalTab === 'approved'
-                  ? 'bg-[#365C78] text-white shadow-xs'
+                  ? 'bg-[#12374d] text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
               }`}
             >
               Completed ({approvedRequests.length})
             </button>
+            {activeView === 'dashboard' && <button type="button" onClick={() => { setRequestsFilter('all'); setActiveView('requests'); }} className="shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200/60">All routes ({companyRequests.length})</button>}
           </div>
 
           {/* Search, Sort & Columns Visibility */}
           <div className="flex flex-wrap items-center gap-2">
             {/* Search */}
             <div className="relative flex-1 sm:flex-none">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-workspace-muted" />
               <input
                 type="text"
-                placeholder="Search..."
+                aria-label="Search recent PreciRoutes"
+                placeholder="Search requests"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8 pr-2.5 py-1 text-xs border border-[#E2E5E9] bg-white rounded-md focus:outline-none focus:ring-1 focus:ring-[#365C78] focus:border-[#365C78] w-full sm:w-48"
+                className="workspace-control min-h-8 w-full pl-8 pr-2.5 text-xs placeholder:text-workspace-muted sm:w-32"
               />
             </div>
 
             {/* Sort Picker */}
-            <div className="flex items-center gap-1 border border-[#E2E5E9] rounded-md px-2 py-1 bg-white text-xs shrink-0">
-              <ArrowUpDown className="w-3 h-3 text-slate-500" />
-              <select aria-label="Filter by form type" value={formFilter} onChange={e => setFormFilter(e.target.value)} className="border border-slate-200 rounded p-2 text-xs"><option value="ALL">All form types</option>{[...new Set(companyRequests.map(r => r.formType))].map(type => <option key={type}>{type}</option>)}</select>
-              <select aria-label="Filter by signing status" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="border border-slate-200 rounded p-2 text-xs"><option value="ALL">All statuses</option>{['Pending Approval','Returned for Correction','Approved','Rejected','Cancelled'].map(status => <option key={status} value={status}>{status === 'Approved' ? 'Signing completed' : status}</option>)}</select>
+            <div className="flex max-w-full flex-wrap items-center gap-2 text-xs">
+              <select aria-label="Filter by form type" value={formFilter} onChange={e => setFormFilter(e.target.value)} className="workspace-control min-h-8 max-w-32 px-2"><option value="ALL">All form types</option>{[...new Set(companyRequests.map(r => r.formType))].map(type => <option key={type}>{type}</option>)}</select>
+              <select aria-label="Filter by signing status" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="workspace-control min-h-8 max-w-32 px-2"><option value="ALL">All statuses</option>{['Pending Approval','Returned for Correction','Approved','Rejected','Cancelled'].map(status => <option key={status} value={status}>{status === 'Approved' ? 'Signing completed' : status}</option>)}</select>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
                 aria-label="Sort Requests By"
-                className="bg-transparent text-xs text-slate-700 font-medium focus:outline-none cursor-pointer"
+                className="workspace-control min-h-8 px-2 text-xs font-medium"
               >
                 <option value="date-desc">Newest First</option>
                 <option value="date-asc">Oldest First</option>
@@ -309,7 +371,9 @@ export const DashboardView: React.FC = () => {
             <div className="relative">
               <button
                 onClick={() => setShowColumnsMenu(!showColumnsMenu)}
-                className="flex items-center gap-1 px-2.5 py-1 border border-[#E2E5E9] bg-white rounded-md text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                aria-expanded={showColumnsMenu}
+                aria-label="Customize table columns"
+                className="workspace-control flex min-h-8 items-center gap-1.5 px-2.5 text-xs font-medium"
                 title="Customize table columns"
               >
                 <SlidersHorizontal className="w-3 h-3 text-slate-500" />
@@ -326,7 +390,7 @@ export const DashboardView: React.FC = () => {
                     const columnLabels: Record<string, string> = {
                       id: 'Request ID & Document',
                       requester: 'Requester',
-                      currentApprover: 'Current Approver',
+                      currentApprover: 'Signers & progress',
                       prioritySla: 'Priority & Target',
                       status: 'Workflow Status',
                       createdAt: 'Submission Date',
@@ -361,51 +425,56 @@ export const DashboardView: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1120px] text-left border-collapse text-[13px]">
             <thead>
-              <tr className="bg-[#F5F6F8] border-b border-[#E2E5E9] text-slate-500 font-semibold text-[11px] tracking-wide">
-                <th className="py-4 px-4 w-8"></th>
-                {visibleColumns.id && <th className="py-4 px-4">Request / document</th>}
-                {visibleColumns.requester && <th className="py-4 px-4">Requester</th>}
-                {visibleColumns.currentApprover && <th className="py-4 px-4 min-w-[290px]">Signers &amp; progress</th>}
-                {visibleColumns.prioritySla && <th className="py-4 px-4">Priority</th>}
-                {visibleColumns.status && <th className="py-4 px-4">Signing status</th>}
-                {visibleColumns.createdAt && <th className="py-4 px-4">Submitted</th>}
-                <th className="py-4 px-4 text-right">Action</th>
+              <tr className="border-b border-workspace-line bg-workspace text-xs font-semibold text-workspace-muted">
+                <th className="py-2.5 px-2.5 w-8"></th>
+                {visibleColumns.id && <><th className="py-2.5 px-2.5">Request ID &amp; subject</th><th className="py-2.5 px-2.5">Form type</th><th className="py-2.5 px-2.5">Company</th></>}
+                {visibleColumns.requester && <th className="py-2.5 px-2.5">Requester</th>}
+                {visibleColumns.currentApprover && <th className="py-2.5 px-2.5 min-w-[220px]">Signers &amp; progress</th>}
+                {visibleColumns.prioritySla && <th className="py-2.5 px-2.5">Priority</th>}
+                {visibleColumns.status && <th className="py-2.5 px-2.5">Signing status</th>}
+                {visibleColumns.createdAt && <th className="py-2.5 px-2.5">Submitted</th>}
+                <th className="py-2.5 px-2.5 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E2E5E9]">
               {filteredRequests.length === 0 ? (
                 <tr>
-                  <td colSpan={2 + Object.values(visibleColumns).filter(Boolean).length} className="py-12 text-center text-slate-400">
-                    <p className="font-medium text-slate-600">No requests found</p>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      No matching records found for the selected tab and filter.
+                  <td colSpan={2 + Object.values(visibleColumns).filter(Boolean).length + (visibleColumns.id ? 2 : 0)} className="py-12 text-center text-slate-400">
+                    <p className="font-medium text-slate-600">{!hasFilters && internalTab === 'pending' ? 'You’re all caught up' : 'No requests found'}</p>
+                    <p className="text-xs text-slate-600 mt-1">
+                      {hasFilters ? 'No requests match your search and filters.' : internalTab === 'pending' ? 'Requests that need your action will appear here.' : 'There are no requests in this view yet.'}
                     </p>
+                    {hasFilters && <button type="button" className="mt-2 text-xs font-semibold text-[#365C78] underline" onClick={() => {
+                      setSearchQuery('');
+                      setFormFilter('ALL');
+                      setStatusFilter('ALL');
+                    }}>Clear filters</button>}
                   </td>
                 </tr>
               ) : (
-                filteredRequests.map((req) => {
+                displayedRequests.map((req) => {
                   const isExpanded = expandedRowId === req.id;
                   const isUrgent = req.formData.priority === 'Urgent';
                   const isPendingMe =
-                    needsMyAction(req,currentUser.id);
+                    needsMyAction(req, currentUser);
 
                   return (
                     <React.Fragment key={req.id}>
                       <tr
                         onClick={() => setExpandedRowId(isExpanded ? null : req.id)}
-                        className={`hover:bg-sky-50/60 transition-colors duration-150 cursor-pointer ${
-                          isExpanded ? 'bg-[#EBF2F7]/40' : ''
+                        className={`cursor-pointer transition-colors duration-150 hover:bg-workspace/60 ${
+                          isExpanded ? 'bg-workspace/60' : ''
                         }`}
                       >
                         {/* Expand toggle */}
-                        <td className="py-4 px-4 text-center">
+                        <td className="py-2.5 px-2.5 text-center">
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               setExpandedRowId(isExpanded ? null : req.id);
                             }}
-                            className="text-slate-400 hover:text-slate-600"
+                            className="inline-grid size-7 place-items-center rounded-md text-workspace-muted hover:bg-workspace focus-visible:outline-2 focus-visible:outline-workspace-steel"
                             aria-expanded={isExpanded}
                             aria-label={`Expand details for ${req.id}`}
                           >
@@ -419,12 +488,10 @@ export const DashboardView: React.FC = () => {
 
                         {/* Request ID + Form */}
                         {visibleColumns.id && (
-                          <td className="py-4 px-4">
+                          <>
+                          <td className="py-2.5 px-2.5">
                             <div className="font-semibold text-[#192B3C] text-xs flex flex-wrap items-center gap-1.5">
-                              <span className="break-all max-w-[210px]" title={req.id}>{req.id}</span>
-                              <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase bg-slate-100 text-[#365C78] border border-slate-200">
-                                {req.companyId}
-                              </span>
+                              <span className="max-w-[210px] text-workspace-ink [overflow-wrap:anywhere]" title={req.id}>{req.id}</span>
                               {req.documentVersion > 1 && (
                                 <span className="text-[9px] px-1 rounded bg-slate-200 text-slate-700 font-mono">
                                   v{req.documentVersion}
@@ -432,25 +499,33 @@ export const DashboardView: React.FC = () => {
                               )}
                             </div>
                             <div className="text-xs text-slate-500 truncate max-w-[220px] mt-1" title={req.formData.workDescription}>
-                              {req.formType}
+                              {req.title || req.formData.workDescription}
                             </div>
                           </td>
+                          <td className="px-2.5 py-2.5"><span className="inline-block rounded-md bg-workspace px-2 py-1 text-xs font-semibold leading-tight">{req.formType}</span></td>
+                          <td className="px-2.5 py-2.5 text-xs font-semibold">{req.companyId}</td>
+                          </>
                         )}
 
                         {/* Requester */}
                         {visibleColumns.requester && (
-                          <td className="py-4 px-4">
-                            <div className="font-semibold text-[#192B3C]">{req.requesterName}</div>
-                            <div className="text-[10px] text-slate-500">{req.department}</div>
+                          <td className="py-2.5 px-2.5">
+                            <div className="flex items-center gap-2">
+                              <span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full bg-indigo-100 text-[10px] font-bold text-indigo-800">{getInitials(req.requesterName)}</span>
+                              <div><div className="font-semibold text-workspace-ink">{req.requesterName}</div>
+                              <div className="text-[11px] text-workspace-muted">{req.department}</div></div>
+                            </div>
                           </td>
                         )}
 
                         {/* Approval Journey & Progress Chain */}
                         {visibleColumns.currentApprover && (
-                          <td className="py-4 px-4">
+                          <td className="py-2.5 px-2.5">
                             <CompactApprovalChain
                               request={req}
                               currentUserId={currentUser.id}
+                              maxVisible={4}
+                              compact
                               onOpenDetail={(r) => setSelectedJourneyRequest(r)}
                             />
                           </td>
@@ -458,7 +533,7 @@ export const DashboardView: React.FC = () => {
 
                         {/* Priority & Turnaround Target (Distinguished from Status) */}
                         {visibleColumns.prioritySla && (
-                          <td className="py-4 px-4">
+                          <td className="py-2.5 px-2.5">
                             <div className="flex items-center gap-1.5">
                               <span
                                 className={`text-[11px] font-semibold px-2 py-0.5 rounded border inline-block ${
@@ -480,7 +555,7 @@ export const DashboardView: React.FC = () => {
 
                         {/* Workflow Status */}
                         {visibleColumns.status && (
-                          <td className="py-4 px-4">
+                          <td className="py-2.5 px-2.5">
                             <span
                               className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border whitespace-nowrap ${
                                 req.status === 'Approved'
@@ -503,14 +578,14 @@ export const DashboardView: React.FC = () => {
                                     : 'bg-sky-600'
                                 }`}
                               />
-                              <span>{req.status === 'Approved' ? 'Signing completed' : req.status === 'Returned for Correction' ? 'Returned' : req.status === 'Pending Approval' ? 'In progress' : req.status}</span>
+                              <span>{req.status === 'Approved' ? 'Signing completed' : req.status === 'Returned for Correction' ? 'Returned' : req.status}</span>
                             </span>
                           </td>
                         )}
 
                         {/* Submission Date */}
                         {visibleColumns.createdAt && (
-                          <td className="py-4 px-4 tabular-nums text-slate-600">
+                          <td className="py-2.5 px-2.5 tabular-nums text-slate-600">
                             <div>
                               {new Date(req.createdAt).toLocaleDateString('en-GB', {
                                 day: '2-digit',
@@ -528,20 +603,16 @@ export const DashboardView: React.FC = () => {
                         )}
 
                         {/* Primary Action Button */}
-                        <td className="py-4 px-4 text-right">
+                        <td className="py-2.5 px-2.5 text-right">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               openReviewRequest(req.id);
                             }}
-                            className={`px-3 py-1.5 rounded-md font-semibold text-xs transition-colors shadow-xs inline-flex items-center gap-2 whitespace-nowrap ${
-                              isPendingMe
-                                ? 'bg-[#365C78] hover:bg-[#2A4A62] text-white'
-                                : 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300'
-                            }`}
+                            className={`inline-flex min-h-8 items-center gap-2 whitespace-nowrap px-2.5 text-xs font-semibold ${isPendingMe ? 'workspace-primary' : 'workspace-control'}`}
                           >
-                            <span>{req.pendingReplacement?.newUserId === currentUser.id ? 'Respond' : req.status === 'Returned for Correction' && req.requesterId === currentUser.id ? 'Review correction' : isPendingMe ? 'Review & sign' : 'View details'}</span>
-                            <ArrowRight className="w-3 h-3" />
+                            <span>{actionFor(req).label}</span>
+                            <ArrowRight aria-hidden="true" className="size-3.5" />
                           </button>
                         </td>
                       </tr>
@@ -549,7 +620,7 @@ export const DashboardView: React.FC = () => {
                       {/* Expandable Approval Workflow Stepper & Audit Overview */}
                       {isExpanded && (
                         <tr className="bg-[#F9FAFB] border-b border-[#E2E5E9]">
-                          <td colSpan={2 + Object.values(visibleColumns).filter(Boolean).length} className="p-4 pl-10">
+                          <td colSpan={2 + Object.values(visibleColumns).filter(Boolean).length + (visibleColumns.id ? 2 : 0)} className="p-4 pl-10">
                             <div className="bg-white p-4 rounded-md border border-[#E2E5E9] space-y-4">
                               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E2E5E9] pb-3">
                                 <div>
@@ -592,21 +663,50 @@ export const DashboardView: React.FC = () => {
         </div>
 
         {/* Operational Table Footer */}
-        <div className="p-3 border-t border-[#E2E5E9] bg-[#F9FAFB] text-[11px] text-slate-500 flex flex-col sm:flex-row justify-between items-center gap-2">
+        <div className="flex flex-col items-center justify-between gap-2 rounded-b-xl border-t border-workspace-line bg-workspace/40 p-3 text-xs text-workspace-muted sm:flex-row">
           <span>
-            Showing {filteredRequests.length} of {companyRequests.length} requests in {selectedCompany.fullName}
+            Showing {displayedRequests.length} of {companyRequests.length} requests in {selectedCompany.fullName}
           </span>
           <div className="flex items-center gap-3">
 
 
             <button
-              onClick={() => setActiveView('archive')}
+              onClick={() => { setRequestsFilter('all'); setActiveView('requests'); }}
               className="font-medium text-[#365C78] hover:underline"
             >
-              Open register
+              View all requests
             </button>
           </div>
         </div>
+      </div>
+
+        <aside className="grid gap-3 sm:max-[1560px]:grid-cols-2" aria-label="Request shortcuts and totals">
+          <section className="workspace-panel overflow-hidden">
+            <h2 className="flex items-center gap-2 border-b border-workspace-line px-3 py-3 text-sm font-bold"><Zap aria-hidden="true" className="size-4 text-workspace-teal" />Quick actions</h2>
+            <div className="p-1.5">
+              {([
+                ['Needs my action', pendingForMeRequests.length, 'pending', Inbox],
+                ['Requests I started', myRequests.length, 'my', FileText],
+                ['Returned requests', returnedRequests.length, 'returned', RotateCcw],
+                ['Signing completed', approvedRequests.length, 'approved', CheckCircle2],
+              ] as const).map(([label, count, tab, Icon]) => (
+                <button type="button" key={tab} aria-pressed={internalTab === tab} onClick={() => selectTab(tab)}
+                  className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-xs font-semibold hover:bg-workspace focus-visible:outline-2 focus-visible:outline-workspace-steel aria-pressed:bg-workspace-tint">
+                  <Icon aria-hidden="true" className="size-4 shrink-0 text-workspace-teal" />
+                  <span className="flex-1">{label} ({count})</span><ChevronRight aria-hidden="true" className="size-3.5 shrink-0" />
+                </button>
+              ))}
+            </div>
+          </section>
+          <section className="workspace-panel overflow-hidden">
+            <h2 className="flex items-center gap-2 border-b border-workspace-line px-3 py-3 text-sm font-bold"><BarChart3 aria-hidden="true" className="size-4 text-workspace-teal" />At a glance</h2>
+            <dl className="divide-y divide-workspace-line px-3 text-xs">
+              <div className="flex justify-between gap-2 py-2.5"><dt>Requests in this view</dt><dd className="font-bold tabular-nums">{companyRequests.length}</dd></div>
+              <div className="flex justify-between gap-2 py-2.5"><dt>Awaiting approval</dt><dd className="font-bold tabular-nums">{companyRequests.filter(request => request.status === 'Pending Approval').length}</dd></div>
+              <div className="flex justify-between gap-2 py-2.5"><dt>Signing completed</dt><dd className="font-bold tabular-nums">{approvedRequests.length}</dd></div>
+            </dl>
+          </section>
+        </aside>
       </div>
 
       {/* Approval Journey Inspection Modal */}

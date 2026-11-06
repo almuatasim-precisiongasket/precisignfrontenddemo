@@ -1,0 +1,82 @@
+.admin-payment-document {
+  width: 190mm;
+  max-width: 100%;
+  background: #fff;
+  color: #111827;
+  font: 10pt/1.3 Arial, sans-serif;
+  border: 1px solid currentColor;
+  overflow-wrap: anywhere;
+}
+
+.admin-payment-header {
+  position: relative;
+  min-height: 20mm;
+  display: grid;
+  align-content: center;
+  padding: 3mm 22mm;
+  text-align: center;
+  border-bottom: 1px solid currentColor;
+  font-weight: 700;
+}
+
+.admin-payment-header h2 {
+  font-size: 12pt;
+  color: #365c78;
+}
+
+.admin-payment-logo {
+  position: absolute;
+  inset: 3mm auto auto 3mm;
+  width: 16mm;
+  height: 14mm;
+}
+
+.admin-payment-logo img,
+.admin-payment-signature img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.admin-payment-grid,
+.admin-payment-signatures {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-payment-signatures {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  text-align: center;
+}
+
+.admin-payment-document section {
+  padding: 2mm;
+  border-bottom: 1px solid currentColor;
+}
+
+.admin-payment-grid section + section,
+.admin-payment-signatures section + section {
+  border-left: 1px solid currentColor;
+}
+
+.admin-payment-grid section:nth-child(odd) {
+  border-left: 0;
+}
+
+.admin-payment-grid section { min-height: 13mm; }
+.admin-payment-label { font-weight: 700; }
+.admin-payment-label span { display: block; font-weight: 400; }
+.admin-payment-description { min-height: 44mm; }
+.admin-payment-description p { white-space: pre-wrap; }
+.admin-payment-completion { margin-top: 1mm; }
+.admin-payment-completion div:has(> dt) { display: grid; grid-template-columns: 1fr 1fr; gap: 2mm; margin-top: 1mm; }
+.admin-payment-signature { height: 14mm; border-bottom: 1px solid currentColor; margin: 0 auto 1mm; width: 80%; }
+.admin-payment-document .admin-payment-notes { border-bottom: 0; font-size: 8pt; }
+
+@media print {
+  .admin-payment-document:not(.cash-voucher-document) {
+    width: calc(100% - 2mm);
+    max-width: 188mm;
+  }
+  .admin-payment-description { min-height: 34mm; }
+}

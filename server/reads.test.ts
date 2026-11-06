@@ -32,6 +32,10 @@ test('read API enforces company permissions on every list, detail and bootstrap'
     const unrelatedHeaders={Cookie:`precisign_session=${createSession(db,unrelated)}`};
     assert.deepEqual(await(await fetch(`${base}/api/requests`,{headers:unrelatedHeaders})).json(),[]);
     assert.equal((await fetch(`${base}/api/requests/PEW`,{headers:unrelatedHeaders})).status,404);
+    const pdfHeaders = { ...unrelatedHeaders, Origin: 'http://localhost:3000', 'Content-Type': 'application/json' };
+    const pdfBody = JSON.stringify({ version: 1, updatedAt: 'synthetic' });
+    assert.equal((await fetch(`${base}/api/requests/PEW/document-pdf`, { method: 'POST', headers: pdfHeaders, body: pdfBody })).status, 404);
+    assert.equal((await fetch(`${base}/api/requests/PEW/document-pdf`, { method: 'POST', headers: { Origin: 'http://localhost:3000', 'Content-Type': 'application/json' }, body: pdfBody })).status, 401);
     for (const [index, entry] of cases.entries()) {
       const headers = { Cookie: `precisign_session=${createSession(db, accounts[index])}` };
       for (const scope of ['', '?scope=PEG']) {

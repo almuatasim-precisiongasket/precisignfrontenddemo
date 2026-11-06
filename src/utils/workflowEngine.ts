@@ -8,6 +8,7 @@ import {
   AttachmentItem,
 } from '../types/index';
 import { canUserAccessCompany } from './companyAccess';
+import { canCompleteWithOutstandingSteps } from './routeReplacement';
 
 export function createNewRequestRecord(params: {
   id: string;
@@ -213,6 +214,18 @@ export function approveRequestStage(params: {
     updatedFormData.approvalAuthoritySignatureDate = now;
     updatedFormData.approvalAuthoritySignatureDataUrl =
       signatureDataUrl || actingUser.signatureDataUrl;
+  } else if (request.formType === 'Administrative & Payment Request' && signingIndex === 0 && finalIndex === 1 && updatedFormData.administrativePayment) {
+    const dataUrl = signatureDataUrl || actingUser.signatureDataUrl;
+    if (dataUrl) updatedFormData.administrativePayment = {
+      ...updatedFormData.administrativePayment,
+      departmentHeadSignature: { name: actingUser.name, dataUrl },
+    };
+  } else if (request.formType === 'Expense Claim' && signingIndex === 0 && finalIndex === 1 && updatedFormData.expenseClaim) {
+    const dataUrl = signatureDataUrl || actingUser.signatureDataUrl;
+    if (dataUrl) updatedFormData.expenseClaim = {
+      ...updatedFormData.expenseClaim,
+      departmentHeadSignature: { name: actingUser.name, dataUrl },
+    };
   }
 
   const nextApprover = !isFinalStage ? updatedSteps[nextStageIndex] : undefined;
@@ -319,6 +332,12 @@ export function resubmitCorrectedRequest(params: {
 
   const enrichedFormData: AdminWorkFormData = {
     ...updatedFormData,
+    ...(updatedFormData.administrativePayment && {
+      administrativePayment: { ...updatedFormData.administrativePayment, departmentHeadSignature: undefined },
+    }),
+    ...(updatedFormData.expenseClaim && {
+      expenseClaim: { ...updatedFormData.expenseClaim, departmentHeadSignature: undefined },
+    }),
     requesterSignatureName: actingUser.name,
     requesterSignatureDate: now,
     requesterSignatureDataUrl: signatureDataUrl || actingUser.signatureDataUrl,
@@ -327,6 +346,7 @@ export function resubmitCorrectedRequest(params: {
     approvalAuthoritySignatureDataUrl: undefined,
   };
 
+  const revisionNote = changeNote?.trim();
   const newHistoryItem: ApprovalHistoryItem = {
     id: `hist-${Date.now()}-${request.approvalHistory.length + 1}`,
     stepNumber: 0,
@@ -335,7 +355,7 @@ export function resubmitCorrectedRequest(params: {
     actionByRole: actingUser.role,
     action: 'Submitted',
     dateTime: now,
-    comments: changeNote ? `Resubmitted: ${changeNote.trim()}` : `Resubmitted Version ${nextVersion}`,
+    comments: revisionNote ? `Resubmitted: ${revisionNote}` : `Resubmitted Version ${nextVersion}`,
     version: nextVersion,
   };
 
@@ -360,7 +380,7 @@ export function resubmitCorrectedRequest(params: {
         updatedAt: now,
         updatedBy: actingUser.name,
         formData: enrichedFormData,
-        changeNote: changeNote?.trim() || `Version ${nextVersion} corrections`,
+        changeNote: revisionNote || `Version ${nextVersion} corrections`,
       },
     ],
   };
@@ -451,6 +471,14 @@ export function completePreciRoute(params: { request: RequestRecord; actingUser:
     return { success: false, error: 'Only the assigned final approver can complete an open PreciRoute.' };
   }
   if (!reason?.trim()) return { success: false, error: 'A completion reason is required.' };
+  if (request.approvalSteps.slice(0, -1).some(step => step.status !== 'Approved'
+    && request.workflowConfig.stages.find(stage => stage.id === step.stageId)?.mustSign)) {
+    return { success: false, error: 'A required signature is still outstanding.' };
+  }
+  if (request.approvalSteps.slice(0, -1).some(step => step.status !== 'Approved' && step.status !== 'Bypassed')
+    && !canCompleteWithOutstandingSteps(request, actingUser.id)) {
+    return { success: false, error: 'This signer can sign but cannot complete the route with outstanding signatures.' };
+  }
   const final = request.approvalSteps.at(-1)!;
   const signed = final.status === 'Approved' ? { success: true, updatedRequest: request } : approveRequestStage({ request, actingUser, signatureDataUrl });
   if (!signed.success || !signed.updatedRequest) return signed;

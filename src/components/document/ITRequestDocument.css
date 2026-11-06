@@ -1,0 +1,140 @@
+.it-request-document {
+  container-type: inline-size;
+  width: 100%;
+  max-width: 190mm;
+  margin: 0 auto;
+  padding: clamp(12px, 4%, 8mm);
+  border: 1px solid #cbd5e1;
+  background: white;
+  color: #111827;
+  box-shadow: 0 3px 12px rgb(25 43 60 / 8%);
+  font-family: Arial, sans-serif;
+}
+
+.it-document-header {
+  padding: 2cqi 0 4cqi;
+  text-align: center;
+}
+
+.it-document-brand {
+  width: clamp(70px, 24cqi, 160px);
+  height: clamp(30px, 10cqi, 64px);
+  margin-inline: auto;
+}
+
+.it-document-brand img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.it-document-header h3 {
+  margin-top: 3cqi;
+  font-size: clamp(15px, 4cqi, 24px);
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.it-document-body {
+  border: 1px solid currentColor;
+  font-size: clamp(10px, 2.3cqi, 14px);
+  line-height: 1.38;
+  overflow-wrap: anywhere;
+}
+
+.it-document-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.it-document-cell {
+  min-height: 11cqi;
+  padding: 1.5cqi 2cqi;
+  border-bottom: 1px solid currentColor;
+}
+
+.it-document-cell:nth-child(odd) {
+  border-right: 1px solid currentColor;
+}
+
+.it-document-body dt,
+.it-document-body h4 {
+  font-weight: 700;
+}
+
+.it-document-body dd {
+  margin: 0.6em 0 0;
+}
+
+.it-document-text {
+  min-height: 20cqi;
+  padding: 1.5cqi 2cqi;
+  border-bottom: 1px solid currentColor;
+}
+
+.it-document-text p {
+  margin-top: 0.65em;
+  white-space: pre-wrap;
+}
+
+.it-document-signatures,
+.it-document-remarks {
+  break-inside: avoid;
+}
+
+.it-document-signatures p {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+  margin-top: clamp(12px, 4cqi, 26px);
+}
+
+.it-signature-line {
+  flex: 1;
+  max-width: 70%;
+  border-bottom: 1px solid currentColor;
+}
+
+.it-document-remarks {
+  min-height: 24cqi;
+  padding: 1.5cqi 2cqi;
+  text-align: center;
+}
+
+@media print {
+  body:has(.it-request-preview) .demo-workspace-notice {
+    display: none !important;
+  }
+
+  .it-request-preview,
+  .it-request-layout,
+  .it-request-preview-panel,
+  .it-request-paper-wrap {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: white !important;
+  }
+
+  .it-request-document {
+    container-type: normal;
+    min-height: 0;
+    max-width: 190mm;
+    padding: 6mm;
+    border: 1px solid black;
+    box-shadow: none;
+    color: black;
+  }
+
+  .it-document-header { padding: 4mm 0 7mm; }
+  .it-document-brand { width: 42mm; height: 17mm; }
+  .it-document-header h3 { margin-top: 6mm; font-size: 17pt; }
+  .it-document-body { font-size: 10pt; }
+  .it-document-cell, .it-document-text, .it-document-remarks { padding: 3mm; }
+  .it-document-cell { min-height: 16mm; }
+  .it-document-text { min-height: 34mm; }
+  .it-document-signatures p { margin-top: 7mm; }
+  .it-document-remarks { min-height: 40mm; }
+}

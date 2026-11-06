@@ -2,6 +2,7 @@ import sharp from 'sharp';
 import { PDFDocument } from 'pdf-lib';
 import { randomUUID } from 'node:crypto';
 import type { AdminWorkFormData, AttachmentItem } from '../src/types/index';
+import type { SubmitInput } from '../src/services/apiTypes';
 
 export class RequestError extends Error { constructor(public status: number, message: string) { super(message); } }
 export const fail = (message: string): never => { throw new RequestError(400, message); };
@@ -53,8 +54,55 @@ export async function attachments(value: any, actor: string): Promise<Attachment
   }
   return result;
 }
-export function form(value: any, partial = false) {
-  fields(value, ['dateOfRequest','department','priority','workDescription','documents']);
+export function form(value: any, partial = false, combined = false, it = false, financial?: 'cashVoucher' | 'expenseClaim'): SubmitInput['formData'] {
+  fields(value, ['dateOfRequest','department','priority','workDescription','documents', ...(combined ? ['administrativePayment'] : []), ...(it ? ['itRequest'] : []), ...(financial ? [financial] : [])]);
+  function amount(value: unknown) {
+    if (!/^\d{1,9}(\.\d{1,2})?$/.test(text(value, 12)) || Number(value) <= 0) fail('Enter a positive amount in SAR.');
+  }
+  if (financial === 'cashVoucher') {
+    const voucher = value.cashVoucher;
+    fields(voucher, ['payee', 'recipientUserId', 'amount', 'amountInWords', 'source']);
+    text(voucher.payee, 200);
+    text(voucher.recipientUserId, 150);
+    text(voucher.amountInWords, 250);
+    amount(voucher.amount);
+    if (!['Admin petty cash', 'Accounts cash'].includes(voucher.source)) fail('Select a cash source.');
+  }
+  if (financial === 'expenseClaim') {
+    const claim = value.expenseClaim;
+    fields(claim, ['designation', 'project', 'lines']);
+    text(claim.designation, 150);
+    text(claim.project, 200);
+    if (!Array.isArray(claim.lines) || claim.lines.length < 1 || claim.lines.length > 20) fail('Enter between 1 and 20 expense lines.');
+    for (const line of claim.lines) {
+      fields(line, ['date', 'particulars', 'amount', 'noBillReason', 'receiptIndex']);
+      const date = text(line.date, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date) fail('Enter a valid expense date.');
+      text(line.particulars, 1000);
+      amount(line.amount);
+      if (line.noBillReason !== undefined) text(line.noBillReason, 500);
+      if (line.receiptIndex !== undefined && (!Number.isSafeInteger(line.receiptIndex) || line.receiptIndex < 0)) fail('Invalid receipt selection.');
+    }
+  }
+  if (it && (!partial || value.itRequest !== undefined)) {
+    fields(value.itRequest, ['requestType', 'justification']);
+    text(value.itRequest.requestType, 150);
+    text(value.itRequest.justification, 10000);
+  }
+  if (combined && (!partial || value.administrativePayment !== undefined)) {
+    const details = value.administrativePayment;
+    fields(details, ['documentDescription', 'payment']);
+    text(details.documentDescription, 1000, false);
+    if (details.payment !== undefined) {
+      const payment = details.payment;
+      fields(payment, ['amount', 'transferMode', 'transferDetails', 'purpose', 'otherPurpose']);
+      amount(payment.amount);
+      if (!['Bank','Cash','Cheque'].includes(payment.transferMode)) fail('Invalid transfer method.');
+      if (payment.transferDetails !== undefined) text(payment.transferDetails, 200, false);
+      if (!['Government Payment','Advance Cash','Other'].includes(payment.purpose)) fail('Invalid payment purpose.');
+      if (payment.purpose === 'Other' || payment.otherPurpose !== undefined) text(payment.otherPurpose, 500, payment.purpose === 'Other');
+    }
+  }
   for (const [key, max] of [['dateOfRequest',50],['department',150],['workDescription',20000]] as const) {
     if (!partial || value[key] !== undefined) text(value[key], max, !partial);
   }
@@ -64,6 +112,6 @@ export function form(value: any, partial = false) {
   fields(value.documents, [...keys, 'othersDescription']);
   if (keys.some(key => typeof value.documents[key] !== 'boolean')) fail('Invalid document checklist.');
   text(value.documents.othersDescription, 1000, false);
-  return value as Pick<AdminWorkFormData,'dateOfRequest'|'department'|'priority'|'workDescription'|'documents'>;
+  return value as Pick<AdminWorkFormData,'dateOfRequest'|'department'|'priority'|'workDescription'|'documents'|'administrativePayment'|'itRequest'>;
 }
 

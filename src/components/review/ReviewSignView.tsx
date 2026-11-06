@@ -1,9 +1,14 @@
 import React, { useState, useRef } from 'react';
 import { canAdministerWorkflows } from '../../utils/workflowAdministration';
+import { canCompleteWithOutstandingSteps, configuredReplacementIds, usesConfiguredBackups } from '../../utils/routeReplacement';
 import { canUserAccessCompany } from '../../utils/companyAccess';
+import { needsProcessingAction } from '../../utils/routeProcessing';
 import { useApp } from '../../context/AppContext';
 import { AdminWorkFormData, AttachmentItem } from '../../types/index';
-import { AdminWorkRequestDocument } from '../document/AdminWorkRequestDocument';
+import { RequestDocument } from '../document/RequestDocument';
+import { RouteProcessingPanel } from './RouteProcessingPanel';
+import { FinanceHoldPanel } from './FinanceHoldPanel';
+import { FinancialCorrectionFields } from './FinancialCorrectionFields';
 import { SignatureModal } from '../modals/SignatureModal';
 import { DocuSignProgressBanner } from './DocuSignProgressBanner';
 import { ApprovalJourneyPanel } from '../journey/ApprovalJourneyPanel';
@@ -46,6 +51,7 @@ export const ReviewSignView: React.FC = () => {
     replaceSigner,
     acceptReplacement,
     readLatestRoute,
+    downloadDocumentPdf,
     users,
     resubmitRequest,
     setActiveView,
@@ -69,15 +75,20 @@ export const ReviewSignView: React.FC = () => {
   const [replacementUser, setReplacementUser] = useState('');
   const [replacementReason, setReplacementReason] = useState('');
   const [saving, setSaving] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
   const savingReason = useRef(false);
   const signingRecordTime = useRef<string | null>(null);
   const [activeSidebarTab, setActiveSidebarTab] = useState<'actions' | 'timeline' | 'attachments'>('actions');
-  const [mobileViewTab, setMobileViewTab] = useState<'document' | 'sidebar'>('document');
+  const [mobileViewTab, setMobileViewTab] = useState<'document' | 'sidebar'>(() => {
+    const canCorrect = request?.status === 'Returned for Correction' && request.requesterId === currentUser.id;
+    const canRespond = request?.status === 'Pending Approval' && request.pendingReplacement?.newUserId === currentUser.id;
+    return request && (canCorrect || canRespond || needsProcessingAction(request, currentUser)) ? 'sidebar' : 'document';
+  });
 
   // Full correction form state if resubmitting
   const [correctedForm, setCorrectedForm] = useState<AdminWorkFormData>(request ? request.formData : ({} as any));
   const [correctedAttachments, setCorrectedAttachments] = useState<AttachmentItem[]>(request?.attachments || []);
-  const [resubmitChangeNote, setResubmitChangeNote] = useState('Updated specifications and attached requested chamber approvals.');
+  const [resubmitChangeNote, setResubmitChangeNote] = useState('');
 
   if (!request) {
     return (
@@ -93,7 +104,9 @@ export const ReviewSignView: React.FC = () => {
     );
   }
 
-  if (request.formType !== 'Admin Work Request') {
+  const financialRequest = (request.formType === 'Cash Voucher' && !!request.formData.cashVoucher)
+    || (request.formType === 'Expense Claim' && !!request.formData.expenseClaim);
+  if (request.formType !== 'Admin Work Request' && request.formType !== 'Administrative & Payment Request' && !(request.formType === 'IT Request' && request.formData.itRequest) && !financialRequest) {
     return (
       <div className="p-12 text-center space-y-4">
         <div className="text-slate-500 text-sm">The {request.formType} document is not available for review yet.</div>
@@ -122,12 +135,42 @@ export const ReviewSignView: React.FC = () => {
   const finalAlreadySigned = request.approvalSteps.at(-1)?.status === 'Approved';
   const isReturned = request.status === 'Returned for Correction';
   const canSign = request.status === 'Pending Approval' && !isRequester && (isAssignedApprover || (isFinalApprover && !finalAlreadySigned));
-  const canOverride = request.status === 'Pending Approval' && isFinalApprover && !isRequester;
+  const configuredBackups = usesConfiguredBackups(request);
+  const replacementCandidates = replacementStage ? users.filter(user =>
+    user.id !== request.requesterId && canUserAccessCompany(user, request.companyId) &&
+    !request.approvalSteps.some(step => step.assignedUserId === user.id) &&
+    (!configuredBackups || configuredReplacementIds(request, replacementStage).includes(user.id))
+  ) : [];
+  const replaceableSteps = request.approvalSteps.filter((step, index) =>
+    !['Approved', 'Bypassed', 'Rejected'].includes(step.status) &&
+    (index !== request.approvalSteps.length - 1 || currentUser.canReplaceFinalApprover)
+  );
+  const canOverride = request.status === 'Pending Approval' && isFinalApprover && !isRequester
+    && canCompleteWithOutstandingSteps(request, currentUser.id);
 
   const handleCopyId = () => {
     navigator.clipboard?.writeText(request.id);
     setActionSuccess('Request ID copied to clipboard');
     setTimeout(() => setActionSuccess(null), 2500);
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!downloadDocumentPdf || downloadingPdf) return;
+    setDownloadingPdf(true);
+    setActionError(null);
+    try {
+      const pdf = await downloadDocumentPdf(request.id, selectedVersion, request.updatedAt);
+      const url = URL.createObjectURL(pdf);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${request.id}-v${selectedVersion}.pdf`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not download PDF.');
+    } finally {
+      setDownloadingPdf(false);
+    }
   };
 
   const handleDownloadAttachment = async (att: any) => {
@@ -254,7 +297,7 @@ export const ReviewSignView: React.FC = () => {
   };
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 max-w-[1680px] mx-auto space-y-3 sm:space-y-4">
+    <div className="request-review p-3 sm:p-4 md:p-6 max-w-[1680px] mx-auto space-y-3 sm:space-y-4">
       {/* Top Breadcrumb & Metadata Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#E2E5E9] no-print">
         <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
@@ -287,11 +330,11 @@ export const ReviewSignView: React.FC = () => {
                     : 'bg-sky-50 text-sky-800 border-sky-200'
                 }`}
               >
-                {request.status}
+                {request.status === 'Approved' ? 'Signing completed' : request.status}
               </span>
             </div>
             <div className="text-[10px] sm:text-[11px] text-slate-500 mt-0.5 truncate">
-              <span>{request.formType} (PR#21-001FA)</span>
+              <span>{request.formType}{request.formType === 'Admin Work Request' && ' (PR#21-001FA)'}</span>
               <span className="mx-1.5">·</span>
               <span>Submitted by {request.requesterName} ({request.department})</span>
             </div>
@@ -302,6 +345,7 @@ export const ReviewSignView: React.FC = () => {
         <div className="lg:hidden flex border border-[#E2E5E9] bg-white rounded-md p-0.5 text-xs w-full sm:w-auto">
           <button
             onClick={() => setMobileViewTab('document')}
+            aria-pressed={mobileViewTab === 'document'}
             className={`flex-1 sm:flex-none px-3 py-1.5 font-semibold rounded transition-colors ${
               mobileViewTab === 'document' ? 'bg-[#365C78] text-white shadow-xs' : 'text-slate-600'
             }`}
@@ -310,6 +354,7 @@ export const ReviewSignView: React.FC = () => {
           </button>
           <button
             onClick={() => setMobileViewTab('sidebar')}
+            aria-pressed={mobileViewTab === 'sidebar'}
             className={`flex-1 sm:flex-none px-3 py-1.5 font-semibold rounded transition-colors ${
               mobileViewTab === 'sidebar' ? 'bg-[#365C78] text-white shadow-xs' : 'text-slate-600'
             }`}
@@ -320,8 +365,8 @@ export const ReviewSignView: React.FC = () => {
       </div>
 
       {/* Notifications / Alerts */}
-      {actionError && (
-        <div className="p-3 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-800 flex items-center justify-between">
+      {actionError && !actionModal && (
+        <div className="no-print p-3 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
             <span>{actionError}</span>
@@ -333,7 +378,7 @@ export const ReviewSignView: React.FC = () => {
       )}
 
       {actionSuccess && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-md text-xs text-emerald-800 flex items-center justify-between">
+        <div className="no-print p-3 bg-emerald-50 border border-emerald-200 rounded-md text-xs text-emerald-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
             <span>{actionSuccess}</span>
@@ -345,12 +390,14 @@ export const ReviewSignView: React.FC = () => {
       )}
 
       {/* DocuSign-Style Recipient Tracking & Stepper Banner */}
-      <DocuSignProgressBanner
-        request={request}
-        currentUserId={currentUser.id}
-        isAssignedApprover={canSign}
-        onSignClick={handleApproveClick}
-      />
+      <div className="no-print">
+        <DocuSignProgressBanner
+          request={request}
+          currentUserId={currentUser.id}
+          isAssignedApprover={canSign}
+          onSignClick={handleApproveClick}
+        />
+      </div>
 
       {/* Split Layout: 62% Document Focus + 38% Approval Controls on Desktop */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
@@ -361,9 +408,9 @@ export const ReviewSignView: React.FC = () => {
           }`}
         >
           {/* Document Controls Strip: Version Tabs + Zoom + Fullscreen + Print */}
-          <div className="bg-white border border-[#E2E5E9] rounded-md px-3 py-2 flex flex-wrap items-center justify-between gap-2 shadow-xs no-print">
+          <div className="workspace-panel no-print sticky top-16 z-10 flex flex-wrap items-center justify-between gap-2 px-3 py-2">
             {/* Version Switcher */}
-            <div className="flex items-center gap-1.5 text-xs">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
               <span className="text-slate-500 font-medium text-[11px]">Version:</span>
               <button
                 onClick={() => setSelectedVersion(1)}
@@ -375,18 +422,19 @@ export const ReviewSignView: React.FC = () => {
               >
                 v1.0 {request.documentVersion === 1 ? '(Current)' : '(Original)'}
               </button>
-              {request.documentVersion > 1 && (
+              {[...new Set([...request.versionSnapshots.map(snapshot => snapshot.version), request.documentVersion])].filter(version => version > 1).sort((a, b) => a - b).map(version => (
                 <button
-                  onClick={() => setSelectedVersion(request.documentVersion)}
+                  key={version}
+                  onClick={() => setSelectedVersion(version)}
                   className={`px-2 py-0.5 rounded text-xs font-mono font-semibold transition-colors ${
-                    selectedVersion === request.documentVersion
+                    selectedVersion === version
                       ? 'bg-[#192B3C] text-white'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
-                  v{request.documentVersion}.0 (Resubmitted)
+                  v{version}.0 {version === request.documentVersion ? '(Current)' : ''}
                 </button>
-              )}
+              ))}
             </div>
 
             {/* Display tools */}
@@ -419,6 +467,11 @@ export const ReviewSignView: React.FC = () => {
                 <Printer className="w-3.5 h-3.5 text-slate-600" />
                 <span>Print</span>
               </button>
+              {downloadDocumentPdf && <button type="button" onClick={handleDownloadPdf} disabled={downloadingPdf}
+                className="flex items-center gap-1 px-2.5 py-1 border border-[#CBD5E1] bg-white hover:bg-slate-50 rounded text-xs font-medium text-slate-700 shadow-xs disabled:opacity-50">
+                <Download className="w-3.5 h-3.5" />
+                <span>{downloadingPdf ? 'Preparing PDF…' : 'Download PDF'}</span>
+              </button>}
 
               <button
                 onClick={() => setIsFullscreen(!isFullscreen)}
@@ -432,8 +485,8 @@ export const ReviewSignView: React.FC = () => {
 
           {/* Document Render Container */}
           <div
-            className={`printable-area overflow-auto rounded-lg bg-slate-200/80 p-2 sm:p-4 border border-[#E2E5E9] flex justify-center ${
-              isFullscreen ? 'fixed inset-2 z-50 bg-slate-900/90 p-4 sm:p-8 max-h-none' : 'max-h-[960px]'
+            className={`printable-area overflow-auto rounded-lg bg-slate-200/80 p-2 sm:p-4 border border-[#E2E5E9] flex items-start justify-center ${
+              isFullscreen ? 'fixed inset-2 z-50 bg-slate-900/90 p-4 sm:p-8 max-h-none' : ''
             }`}
           >
             {isFullscreen && (
@@ -448,13 +501,16 @@ export const ReviewSignView: React.FC = () => {
 
             <div
               style={{
-                transform: `scale(${zoomLevel / 100})`,
-                transformOrigin: 'top center',
-                transition: 'transform 0.15s ease-out',
+                zoom: zoomLevel / 100,
               }}
-              className="w-full flex justify-center"
+              className="document-preview-page w-full flex items-start justify-center"
             >
-              <AdminWorkRequestDocument data={activeFormData} isPrintMode={false} />
+              <RequestDocument
+                formType={request.formType}
+                data={activeFormData}
+                attachments={visibleAttachments}
+                processing={selectedVersion === request.documentVersion ? request.processing : undefined}
+              />
             </div>
           </div>
         </div>
@@ -465,8 +521,11 @@ export const ReviewSignView: React.FC = () => {
             mobileViewTab === 'document' ? 'hidden lg:block' : 'block'
           }`}
         >
+          <RouteProcessingPanel key={request.id} request={request} />
+          <FinanceHoldPanel key={`finance-${request.id}`} request={request} />
+          {!!request.omittedSigningSteps?.length && <p className="rounded border bg-white p-3 text-xs">Signatures not requested: {request.omittedSigningSteps.join(', ')}</p>}
           {/* 1. Primary Approval Action Box */}
-          <div className="bg-white border border-[#E2E5E9] rounded-lg p-5 shadow-xs space-y-4">
+          <div className="workspace-panel space-y-4 p-5">
             <div className="flex items-center justify-between border-b border-[#E2E5E9] pb-3">
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-wider text-[#192B3C]">
@@ -518,7 +577,7 @@ export const ReviewSignView: React.FC = () => {
                     onClick={() => {
                       setActionModal('resubmit');
                     }}
-                    className="w-full py-2 bg-amber-600 hover:bg-amber-700 text-white rounded font-semibold text-xs transition-colors shadow-xs"
+                    className="workspace-primary min-h-10 w-full px-3 py-2 text-xs"
                   >
                     Edit &amp; Resubmit Corrected Document
                   </button>
@@ -549,17 +608,17 @@ export const ReviewSignView: React.FC = () => {
                   <button
                     onClick={handleApproveClick}
                     disabled={!canSign}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-[#365C78] hover:bg-[#2A4A62] text-white rounded-md text-xs font-bold transition-colors shadow-xs"
+                    className="workspace-primary flex min-h-10 w-full items-center justify-center gap-2 px-4 text-xs"
                   >
                     <Check className="w-4 h-4" />
                     <span>Sign</span>
                   </button>
 
-                  {canOverride && <button onClick={() => setActionModal('override')} className="w-full py-2 border rounded text-xs font-semibold">{finalAlreadySigned ? 'Complete Route' : 'Sign & Complete'}</button>}
+                  {canOverride && <button onClick={() => setActionModal('override')} className="workspace-control min-h-10 w-full px-3 text-xs font-semibold">{finalAlreadySigned ? 'Complete Route' : 'Sign & Complete'}</button>}
                   <div className="grid grid-cols-2 gap-2">
                     {/* Return for Correction Button */}
                     <button
-                      onClick={() => setActionModal('return')}
+                      onClick={() => { setActionError(null); setActionReason(''); setActionModal('return'); }}
                       disabled={!isFinalApprover && !request.workflowConfig.stages[request.currentStageIndex]?.canReturnForCorrection}
                       className="py-2 px-3 border border-amber-300 bg-amber-50/60 hover:bg-amber-100/60 text-amber-800 rounded-md text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
                     >
@@ -601,17 +660,19 @@ export const ReviewSignView: React.FC = () => {
             const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' }));
             const link = document.createElement('a'); link.href = url; link.download = `${record.id}-route-summary.txt`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
           }}>Download Route Summary</button>}
-          {request.status === 'Pending Approval' && request.pendingReplacement?.newUserId === currentUser.id && <div className="p-3 border rounded text-xs space-y-2">
+          {request.status === 'Pending Approval' && request.pendingReplacement?.newUserId === currentUser.id && <div className="workspace-panel space-y-3 p-4 text-sm">
             <p>You are proposed as final approver. Accepting transfers final signing and early-completion authority to you.</p>
             {[true,false].map(accept => <button key={String(accept)} disabled={saving} className="p-2 border rounded mr-2" onClick={async () => { setSaving(true); const result = await acceptReplacement(request.id,accept); setSaving(false); if (!result.success) setActionError(result.error || 'Could not respond.'); }}>{accept ? 'Accept Assignment' : 'Decline'}</button>)}
           </div>}
-          {request.status === 'Pending Approval' && (currentUser.canReplaceFinalApprover || canAdministerWorkflows(currentUser)) && <div className="p-3 border rounded text-xs space-y-2">
-            <strong>Replace an unsigned signer</strong>
-            {request.pendingReplacement ? <p>Final replacement awaiting acceptance. The original signer remains assigned.</p> : <>
-              <label className="block">Stage<select className="block w-full border p-2" value={replacementStage} onChange={e => setReplacementStage(e.target.value)}><option value="">Select stage</option>{request.approvalSteps.map((step,index) => !['Approved','Bypassed','Rejected'].includes(step.status) && (index !== request.approvalSteps.length-1 || currentUser.canReplaceFinalApprover) ? <option key={step.stageId} value={step.stageId}>{step.stageName} — {step.assignedUserName}</option> : null)}</select></label>
-              <label className="block">Replacement user<select className="block w-full border p-2" value={replacementUser} onChange={e => setReplacementUser(e.target.value)}><option value="">Select user</option>{users.filter(user => user.id !== request.requesterId && canUserAccessCompany(user,request.companyId) && !request.approvalSteps.some(step => step.assignedUserId === user.id)).map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
-              <label className="block">Reason<textarea className="block w-full border p-2" value={replacementReason} onChange={e => setReplacementReason(e.target.value)} /></label>
-              <button disabled={saving || !replacementStage || !replacementUser || !replacementReason.trim()} className="p-2 border rounded" onClick={async () => { setSaving(true); const result = await replaceSigner(request.id,replacementStage,replacementUser,replacementReason); setSaving(false); if(result.success){ setReplacementReason(''); setReplacementStage(''); setReplacementUser(''); } else setActionError(result.error || 'Replacement failed.'); }}>Replace Signer</button>
+          {request.status === 'Pending Approval' && (currentUser.canReplaceFinalApprover || (!configuredBackups && canAdministerWorkflows(currentUser))) && <div className="workspace-panel space-y-3 p-4 text-sm">
+            <h3 className="font-semibold">Replace an unsigned signer</h3>
+            {request.pendingReplacement ? <p>Final replacement awaiting acceptance. The original signer remains assigned.</p> : replaceableSteps.length === 0 ? <p className="text-workspace-muted">No unsigned stages are available to you. Replacing the final approver requires separate permission.</p> : <>
+              <p className="text-workspace-muted">{configuredBackups ? "Choose a configured backup or restore the primary signer. The change takes effect immediately." : "Intermediate replacements take effect immediately. A proposed final approver must accept before the assignment changes."}</p>
+              <label className="block">Signer to replace<select required className="workspace-control mt-1 block min-h-10 w-full px-2" value={replacementStage} onChange={e => { setReplacementStage(e.target.value); setReplacementUser(''); }}><option value="">Select stage</option>{replaceableSteps.map(step => <option key={step.stageId} value={step.stageId}>{step.stageName} — {step.assignedUserName}</option>)}</select></label>
+              <label className="block">{configuredBackups ? 'Backup or primary signer' : 'Proposed replacement'}<select required disabled={replacementCandidates.length === 0} className="workspace-control mt-1 block min-h-10 w-full px-2" value={replacementUser} onChange={e => setReplacementUser(e.target.value)}><option value="">Select user</option>{replacementCandidates.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
+              {replacementStage && replacementCandidates.length === 0 && <p role="status" className="text-workspace-muted">No eligible replacements are available for this signer.</p>}
+              <label className="block">Reason (required)<textarea required className="workspace-control mt-1 block w-full p-2" value={replacementReason} onChange={e => setReplacementReason(e.target.value)} /></label>
+              <button disabled={saving || !replacementStage || !replacementCandidates.some(user => user.id === replacementUser) || !replacementReason.trim()} className="workspace-control min-h-10 px-3 font-semibold" onClick={async () => { setSaving(true); const result = await replaceSigner(request.id,replacementStage,replacementUser,replacementReason); setSaving(false); if(result.success){ setReplacementReason(''); setReplacementStage(''); setReplacementUser(''); } else setActionError(result.error || 'Replacement failed.'); }}>{configuredBackups ? 'Activate signer' : 'Replace Signer'}</button>
             </>}
           </div>}
           {/* 2. Detailed Approval Journey & Audit Log */}
@@ -621,7 +682,7 @@ export const ReviewSignView: React.FC = () => {
           />
 
           {/* 3. Supporting Document Attachments */}
-          <div className="bg-white border border-[#E2E5E9] rounded-lg overflow-hidden shadow-xs">
+          <div className="workspace-panel overflow-hidden">
             <div className="px-4 py-3 border-b border-[#E2E5E9] bg-[#F9FAFB] flex items-center justify-between">
               <h3 className="text-xs font-bold uppercase tracking-wider text-[#192B3C] flex items-center gap-1.5">
                 <Paperclip className="w-3.5 h-3.5 text-[#365C78]" />
@@ -676,8 +737,11 @@ export const ReviewSignView: React.FC = () => {
             <p className="text-xs text-slate-600 leading-relaxed">
               Specify what corrections or additional documents the requester must provide:
             </p>
-            {actionError && <p role="alert" className="text-xs text-rose-700">{actionError}</p>}
+            {actionError && <p id="return-error" role="alert" className="text-xs text-rose-700">{actionError}</p>}
             <textarea
+              aria-label="Reason for return"
+              aria-invalid={Boolean(actionError)}
+              aria-describedby={actionError ? "return-error" : undefined}
               disabled={saving}
               rows={3}
               value={actionReason}
@@ -688,8 +752,8 @@ export const ReviewSignView: React.FC = () => {
             <div className="flex justify-end gap-2 pt-2">
               <button
                 disabled={saving}
-                onClick={() => setActionModal(null)}
-                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded"
+                onClick={() => { setActionError(null); setActionModal(null); }}
+                className="min-h-10 rounded-md px-3 text-xs font-semibold text-slate-700 enabled:hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#365C78] disabled:opacity-60"
               >
                 Cancel
               </button>
@@ -787,13 +851,13 @@ export const ReviewSignView: React.FC = () => {
       {/* Action Modal: Resubmit Request */}
       {actionModal === 'resubmit' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-lg border border-[#E2E5E9] shadow-xl max-w-lg w-full p-6 space-y-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="correction-heading" className="max-h-[calc(100dvh-2rem)] overflow-y-auto bg-white rounded-lg border border-[#E2E5E9] shadow-xl max-w-lg w-full p-6 space-y-4">
             <div className="border-b border-[#E2E5E9] pb-3">
-              <h3 className="text-sm font-bold text-[#192B3C]">
+              <h3 id="correction-heading" className="text-base font-semibold text-[#192B3C]">
                 Revise &amp; Resubmit Request (Version {request.documentVersion + 1})
               </h3>
               <p className="text-xs text-slate-500">
-                Update the document content and provide revision notes for the approvers.
+                Make the requested changes and sign the new version. It goes back to the first approver.
               </p>
             </div>
 
@@ -812,7 +876,21 @@ export const ReviewSignView: React.FC = () => {
                   </select>
                 </label>
               </div>
-              <fieldset className="space-y-1">
+              {correctedForm.administrativePayment || correctedForm.expenseClaim
+                ? <FinancialCorrectionFields data={correctedForm} attachments={correctedAttachments} onChange={setCorrectedForm} />
+                : request.formType === 'IT Request' ? (
+                <fieldset className="space-y-2">
+                  <legend className="font-semibold">IT request details</legend>
+                  <label className="block">Type of request
+                    <input maxLength={150} className="w-full rounded border px-3 py-1.5" value={correctedForm.itRequest?.requestType ?? ''}
+                      onChange={event => setCorrectedForm({ ...correctedForm, itRequest: { requestType: event.target.value, justification: correctedForm.itRequest?.justification ?? '' } })} />
+                  </label>
+                  <label className="block">Business justification
+                    <textarea maxLength={10000} className="w-full rounded border px-3 py-1.5" value={correctedForm.itRequest?.justification ?? ''}
+                      onChange={event => setCorrectedForm({ ...correctedForm, itRequest: { requestType: correctedForm.itRequest?.requestType ?? '', justification: event.target.value } })} />
+                  </label>
+                </fieldset>
+              ) : <fieldset className="space-y-1">
                 <legend className="font-semibold">Documents</legend>
                 {([
                   ['onlineDocumentChamber', 'Online Document Chamber'], ['physicalDocumentChamber', 'Physical Document Chamber'],
@@ -825,7 +903,7 @@ export const ReviewSignView: React.FC = () => {
                   </label>
                 ))}
                 {correctedForm.documents.others && <input aria-label="Other documents" className="w-full px-3 py-1.5 border rounded" value={correctedForm.documents.othersDescription} onChange={(e) => setCorrectedForm((prev) => ({ ...prev, documents: { ...prev.documents, othersDescription: e.target.value } }))} />}
-              </fieldset>
+              </fieldset>}
               <div className="space-y-1">
                 <label className="font-semibold">Attachments <input type="file" multiple onChange={(event) => {
                   Array.from(event.target.files || []).forEach((file) => {
@@ -839,13 +917,22 @@ export const ReviewSignView: React.FC = () => {
                   });
                   event.target.value = '';
                 }} /></label>
-                {correctedAttachments.map((attachment) => <div key={attachment.id} className="flex justify-between"><span>{attachment.name}</span><button type="button" onClick={() => setCorrectedAttachments((prev) => prev.filter((item) => item.id !== attachment.id))}>Remove</button></div>)}
+                {correctedAttachments.map((attachment, index) => {
+                  const preservesReceiptOrder = [request.formData.expenseClaim, correctedForm.expenseClaim]
+                    .some(claim => claim?.lines.some(line => line.receiptIndex !== undefined && line.receiptIndex >= index));
+                  return <div key={attachment.id} className="flex justify-between">
+                    <span>{attachment.name}</span>
+                    {preservesReceiptOrder ? <span className="text-slate-500">Kept for receipt links</span>
+                      : <button type="button" onClick={() => setCorrectedAttachments(prev => prev.filter(item => item.id !== attachment.id))}>Remove</button>}
+                  </div>;
+                })}
               </div>
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Updated Work Description:
+                <label htmlFor="corrected-work-description" className="block font-semibold text-slate-700 mb-1">
+                  Updated work description
                 </label>
                 <textarea
+                  id="corrected-work-description"
                   rows={3}
                   value={correctedForm.workDescription}
                   onChange={(e) =>
@@ -856,16 +943,20 @@ export const ReviewSignView: React.FC = () => {
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Change Note / Revision Summary:
+                <label htmlFor="resubmit-change-note" className="block font-semibold text-slate-700 mb-1">
+                  What changed? (optional)
                 </label>
                 <input
+                  id="resubmit-change-note"
                   type="text"
+                  maxLength={2000}
                   value={resubmitChangeNote}
                   onChange={(e) => setResubmitChangeNote(e.target.value)}
-                  placeholder="e.g. Attached requested commercial registration and clarified scope"
+                  placeholder="Summarize the changes you made"
+                  aria-describedby="resubmit-change-note-help"
                   className="w-full px-3 py-1.5 border border-[#E2E5E9] rounded focus:outline-none focus:ring-1 focus:ring-[#365C78]"
                 />
+                <p id="resubmit-change-note-help" className="mt-1 text-slate-600">Your note will appear in the request history.</p>
               </div>
             </div>
 
@@ -878,10 +969,11 @@ export const ReviewSignView: React.FC = () => {
                 Cancel
               </button>
               <button
+                disabled={saving}
                 onClick={() => { setSignatureAction('resubmit'); signingRecordTime.current = request.updatedAt; setSignatureModalOpen(true); }}
-                className="px-4 py-1.5 text-xs font-semibold text-white bg-[#365C78] hover:bg-[#2A4A62] rounded shadow-xs"
+                className="min-h-10 rounded-md bg-[#192B3C] px-4 text-xs font-semibold text-white enabled:hover:bg-[#2A4A62] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#365C78] disabled:opacity-60"
               >
-                Submit Revisions
+                Review &amp; sign revision
               </button>
             </div>
           </div>

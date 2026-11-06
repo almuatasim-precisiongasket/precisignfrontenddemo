@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { canAdministerWorkflows } from '../../utils/workflowAdministration';
+import { canAdministerWorkflows, resolveConfiguredSigner } from '../../utils/workflowAdministration';
+import { canUserAccessCompany } from '../../utils/companyAccess';
 import { useApp } from '../../context/AppContext';
-import { WorkflowConfig, WorkflowStageConfig, UserRole, CompanyId } from '../../types/index';
+import { WorkflowConfig, WorkflowStageConfig, CompanyId } from '../../types/index';
 import {
   Sliders,
   Plus,
@@ -60,7 +61,7 @@ export const WorkflowSettingsView: React.FC = () => {
         formType: selectedFormName,
         companyId: targetCompanyId,
         version: connected ? 0 : 1,
-        stages: connected ? [] : [
+        stages: connected || ['IT Request', 'Cash Voucher', 'Expense Claim'].includes(selectedFormName) ? [] : [
           {
             id: `stg-${Date.now()}-1`,
             stageNumber: 1,
@@ -94,24 +95,31 @@ export const WorkflowSettingsView: React.FC = () => {
 
   const FORMS = [
     { name: 'Admin Work Request', code: 'PR#21-001FA', active: true },
+    { name: 'Administrative & Payment Request', code: 'Admin & Payment', active: true },
     { name: 'Payment Request', code: 'PR#21-002FA', active: true },
     { name: 'IT Request', code: 'PR#21-003IT', active: true },
+    { name: 'Cash Voucher', code: 'Cash Voucher', active: true },
+    { name: 'Expense Claim', code: 'Expense Claim', active: true },
     { name: 'IT Asset Allocation', code: 'PR#21-004AA', active: true },
     { name: 'Undertaking Guarantee', code: 'PR#21-005UG', active: true },
   ];
 
-  const ROLES: UserRole[] = [
-    'General Manager',
-    'Director',
-    'Finance',
-    'HR',
-    'Purchase',
-    'IT',
-    'Admin',
-  ];
+  const eligibleSigners = users.filter(user => canUserAccessCompany(user, wfConfig.companyId));
+
+  function resolveSigner(stage: WorkflowStageConfig) {
+    return resolveConfiguredSigner(stage, users, wfConfig.companyId);
+  }
 
   // Add stage
   const handleAddStage = () => {
+    if (['IT Request', 'Cash Voucher'].includes(selectedFormName) && wfConfig.stages.length >= 1) {
+      setValidationError('This form has one approval authority signature space.');
+      return;
+    }
+    if (['Administrative & Payment Request', 'Expense Claim'].includes(selectedFormName) && wfConfig.stages.length >= 2) {
+      setValidationError('This form has two approval spaces: Department Head and Final Approver.');
+      return;
+    }
     const nextNumber = wfConfig.stages.length + 1;
     const newStage: WorkflowStageConfig = {
       id: `stage-${Date.now()}-${nextNumber}`,
@@ -161,16 +169,7 @@ export const WorkflowSettingsView: React.FC = () => {
   const handleStageChange = (id: string, updates: Partial<WorkflowStageConfig>) => {
     setWfConfig((prev) => ({
       ...prev,
-      stages: prev.stages.map((s) => {
-        if (s.id === id) {
-          return { ...s, ...updates, ...(updates.assignedRole && updates.assignedRole !== s.assignedRole ? { assignedUserId: undefined } : {}) };
-        }
-        // If updating mapsToDocumentSignature to true on one stage, unset it on other stages to ensure 1:1 mapping
-        if (updates.mapsToDocumentSignature) {
-          return { ...s, mapsToDocumentSignature: false };
-        }
-        return s;
-      }),
+      stages: prev.stages.map(stage => stage.id === id ? { ...stage, ...updates } : stage),
     }));
   };
 
@@ -190,16 +189,23 @@ export const WorkflowSettingsView: React.FC = () => {
       return;
     }
 
-    const hasSignatureMapping = wfConfig.stages.some((s) => s.mapsToDocumentSignature);
-    if (!hasSignatureMapping) {
-      setValidationError(
-        'At least one stage must be mapped to the official document signature box (Approval Authority Signature).'
-      );
+    const signers = wfConfig.stages.map(resolveSigner);
+    const missing = signers.findIndex(signer => !signer);
+    if (missing !== -1) {
+      setValidationError(`Choose a signer for step ${missing + 1} (${wfConfig.stages[missing].name}).`);
       return;
     }
 
     const updated = {
       ...wfConfig,
+      stages: wfConfig.stages.map((stage, index) => ({
+        ...stage,
+        assignedUserId: signers[index]?.id,
+        assignedRole: signers[index]?.role,
+        isFinalApproval: index === wfConfig.stages.length - 1,
+        mapsToDocumentSignature: index === wfConfig.stages.length - 1,
+        backupCompletionUserIds: index === wfConfig.stages.length - 1 ? stage.backupCompletionUserIds : undefined,
+      })),
       returnBehavior: 'restart_workflow' as const,
       version: connected ? wfConfig.version : wfConfig.version + 1,
     };
@@ -226,7 +232,7 @@ export const WorkflowSettingsView: React.FC = () => {
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold tracking-tight text-[#192B3C] flex items-center gap-2">
               <Sliders className="w-5 h-5 text-[#365C78]" />
-              <span>Forms &amp; workflows</span>
+              <span>Signing routes</span>
             </h1>
             <span className="text-xs font-semibold px-2 py-0.5 rounded bg-[#EBF2F7] text-[#365C78] border border-[#C2D5E3]">
               {selectedCompany.code}
@@ -243,7 +249,7 @@ export const WorkflowSettingsView: React.FC = () => {
           className="flex items-center gap-2 px-4 py-2 bg-[#365C78] hover:bg-[#2A4A62] text-white rounded-md text-xs font-semibold shadow-xs transition-colors shrink-0"
         >
           <Save className="w-3.5 h-3.5" />
-          <span>Save Workflow Configuration</span>
+          <span>Save signing route</span>
         </button>
       </div>
 
@@ -258,6 +264,11 @@ export const WorkflowSettingsView: React.FC = () => {
       <fieldset disabled={busy} className="border rounded p-3 text-xs space-y-2"><legend>Processing team — read access</legend>
         {users.filter(user => user.companyId === wfConfig.companyId || user.allowedCompanyIds?.includes(wfConfig.companyId) || user.isGroupAdmin || user.role === 'Director' || user.role === 'General Manager').map(user => <label className="block" key={user.id}><input type="checkbox" checked={wfConfig.processingUserIds?.includes(user.id) || false} onChange={e => setWfConfig(previous => ({ ...previous, processingUserIds: e.target.checked ? [...(previous.processingUserIds || []),user.id] : (previous.processingUserIds || []).filter(id => id !== user.id) }))} /> {user.name}</label>)}
       </fieldset>
+      {selectedFormName === 'Cash Voucher' && <label className="block rounded border p-3 text-xs">
+        <input type="checkbox" checked={wfConfig.allowCashReceiptWaiver ?? false}
+          onChange={event => setWfConfig(previous => ({ ...previous, allowCashReceiptWaiver: event.target.checked }))} />
+        {' '}Allow the voucher approver to waive receiver acknowledgment after payout
+      </label>}
       {saveFeedback && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-md text-xs text-emerald-800 flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
@@ -268,7 +279,7 @@ export const WorkflowSettingsView: React.FC = () => {
       {/* Form Selector Strip */}
       <div className="bg-white border border-[#E2E5E9] rounded-lg p-3 shadow-xs flex flex-wrap items-center gap-2">
         <span className="text-xs font-semibold text-slate-600 mr-2">Configuring Form:</span>
-        {FORMS.filter(form => !connected || form.name === 'Admin Work Request').map((form) => (
+        {FORMS.filter(form => !connected || ['Admin Work Request', 'Administrative & Payment Request', 'IT Request', 'Cash Voucher', 'Expense Claim'].includes(form.name)).map((form) => (
           <button
             key={form.name}
             onClick={() => {
@@ -319,7 +330,7 @@ export const WorkflowSettingsView: React.FC = () => {
                 <div
                   key={stage.id}
                   className={`p-4 rounded-lg border transition-all ${
-                    stage.mapsToDocumentSignature
+                    isLast
                       ? 'border-[#365C78] bg-[#EBF2F7]/30 ring-1 ring-[#365C78]/20'
                       : 'border-[#E2E5E9] bg-white'
                   }`}
@@ -369,50 +380,61 @@ export const WorkflowSettingsView: React.FC = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 text-xs">
                     {/* Assigned Role */}
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Responsible Role
+                      <label htmlFor={`signer-${stage.id}`} className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Signer
                       </label>
                       <select
-                        value={stage.assignedRole}
-                        onChange={(e) =>
-                          handleStageChange(stage.id, { assignedRole: e.target.value as UserRole })
-                        }
+                        id={`signer-${stage.id}`}
+                        value={resolveSigner(stage)?.id ?? ''}
+                        onChange={(event) => {
+                          const signer = eligibleSigners.find(user => user.id === event.target.value);
+                          if (signer) handleStageChange(stage.id, {
+                            assignedUserId: signer.id, assignedRole: signer.role,
+                            backupSignerIds: stage.backupSignerIds?.filter(id => id !== signer.id),
+                            backupCompletionUserIds: stage.backupCompletionUserIds?.filter(id => id !== signer.id),
+                          });
+                        }}
                         className="w-full px-2.5 py-1.5 border border-[#E2E5E9] rounded focus:outline-none focus:ring-1 focus:ring-[#365C78] bg-white text-xs"
                       >
-                        {ROLES.map((role) => (
-                          <option key={role} value={role}>
-                            {role}
+                        <option value="" disabled>Choose a signer</option>
+                        {eligibleSigners.map((user) => (
+                          <option key={user.id} value={user.id}>
+                            {user.name} · {user.role}
                           </option>
                         ))}
                       </select>
-                      <p className="text-[10px] text-slate-400 mt-1">
-                        A role assignment must resolve to one eligible user when a request is submitted.
-                      </p>
                     </div>
 
                     {/* Document Field & Signature Mapping */}
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Document Field &amp; Signature Binding
-                      </label>
-                      <label className="flex items-center gap-2 p-1.5 rounded border border-[#E2E5E9] hover:bg-slate-50 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={stage.mapsToDocumentSignature}
-                          onChange={(e) =>
-                            handleStageChange(stage.id, {
-                              mapsToDocumentSignature: e.target.checked,
-                              isFinalApproval: e.target.checked,
-                            })
-                          }
-                          className="rounded text-[#365C78] focus:ring-[#365C78] w-4 h-4"
-                        />
-                        <span className="text-[11px] text-slate-800 font-medium">
-                          Maps to Approval Authority Signature Box on official form
-                        </span>
-                      </label>
+                      <p className="text-[11px] font-semibold text-slate-600 mb-1">{isLast ? 'Final approver' : 'Approval step'}</p>
+                      {isLast && <p>The last signer fills the Approval Authority signature box.</p>}
                     </div>
                   </div>
+
+                  {selectedFormName !== 'Admin Work Request' && <fieldset className="mt-3 space-y-1 text-xs">
+                    <legend className="font-semibold">Backup signers</legend>
+                    {eligibleSigners.filter(person => person.id !== resolveSigner(stage)?.id).map(person => {
+                      const selected = stage.backupSignerIds?.includes(person.id) ?? false;
+                      return <div key={person.id} className="flex flex-wrap gap-3">
+                        <label><input type="checkbox" checked={selected} onChange={event => handleStageChange(stage.id, {
+                          backupSignerIds: event.target.checked ? [...(stage.backupSignerIds ?? []), person.id] : stage.backupSignerIds?.filter(id => id !== person.id),
+                          backupCompletionUserIds: stage.backupCompletionUserIds?.filter(id => id !== person.id),
+                          eligibleSignerIds: stage.eligibleSignerIds?.filter(id => id !== person.id),
+                        })} /> {person.name}</label>
+                        {!selected && <label><input type="checkbox" checked={stage.eligibleSignerIds?.includes(person.id) ?? false}
+                          onChange={event => handleStageChange(stage.id, { eligibleSignerIds: event.target.checked
+                            ? [...(stage.eligibleSignerIds ?? []), person.id] : stage.eligibleSignerIds?.filter(id => id !== person.id) })} /> Requester can select</label>}
+                        {isLast && selected && <label><input type="checkbox" checked={stage.backupCompletionUserIds?.includes(person.id) ?? false}
+                          onChange={event => handleStageChange(stage.id, { backupCompletionUserIds: event.target.checked
+                            ? [...(stage.backupCompletionUserIds ?? []), person.id] : stage.backupCompletionUserIds?.filter(id => id !== person.id) })} /> Can complete early</label>}
+                      </div>;
+                    })}
+                    {!isLast && <div className="flex flex-wrap gap-3">
+                      <label><input type="checkbox" checked={stage.requiredOnSubmit ?? false} onChange={event => handleStageChange(stage.id, { requiredOnSubmit: event.target.checked })} /> Required on every request</label>
+                      <label><input type="checkbox" checked={stage.mustSign ?? false} onChange={event => handleStageChange(stage.id, { mustSign: event.target.checked })} /> Cannot bypass if included</label>
+                    </div>}
+                  </fieldset>}
 
                   {/* Stage Permissions */}
                   <div className="mt-3 pt-2 border-t border-slate-100 flex items-center gap-4 text-xs text-slate-600">

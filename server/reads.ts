@@ -1,15 +1,17 @@
 import { currentCompanyDisplay } from '../src/utils/companyDisplay';
 import { canReadPreciRoute } from '../src/utils/routeAccess';
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { ownSignature } from './profile';
 import type { DatabaseSync } from 'node:sqlite';
-import type { Company, CompanyId, UserProfile } from '../src/types/index';
+import type { Company, CompanyId, RequestRecord, UserProfile } from '../src/types/index';
 import { canUserAccessCompany } from '../src/utils/companyAccess';
-import { safeProfile } from './auth';
+import { safeProfile, sessionUser } from './auth';
+import { renderDocumentPdf } from './documentPdf';
 
 const ids: CompanyId[] = ['PEW', 'ICCL', 'FSG'];
-export function readRoutes(db: DatabaseSync) {
+export function readRoutes(db: DatabaseSync, origin: string, sessionToken: (request: Request) => string | undefined) {
   const router = Router();
+  let renderingPdf = false;
   router.get('/bootstrap', (_req, res) => {
     const user = res.locals.user as UserProfile;
     const allowed = ids.filter(id => canUserAccessCompany(user, id));
@@ -28,11 +30,42 @@ export function readRoutes(db: DatabaseSync) {
     const rows = allowed.length ? db.prepare(`SELECT record,revision FROM requests WHERE company_id IN (${allowed.map(() => '?').join(',')}) ORDER BY id`).all(...allowed) : [];
     res.json(rows.map(row => ({ ...JSON.parse(String(row.record)), revision: row.revision })).filter(record => canReadPreciRoute(res.locals.user, record)));
   });
+  function readableRequest(id: string, user: UserProfile) {
+    const row = db.prepare('SELECT record,revision FROM requests WHERE id=?').get(id);
+    if (!row) return undefined;
+    const record = JSON.parse(String(row.record)) as RequestRecord;
+    if (!canUserAccessCompany(user, record.companyId) || !canReadPreciRoute(user, record)) return undefined;
+    return { ...record, revision: row.revision };
+  }
   router.get('/requests/:id', (req, res) => {
-    const allowed = ids.filter(id => canUserAccessCompany(res.locals.user, id));
-    const row = allowed.length ? db.prepare(`SELECT record,revision FROM requests WHERE id=? AND company_id IN (${allowed.map(() => '?').join(',')})`).get(req.params.id, ...allowed) : undefined;
-    if (!row || !canReadPreciRoute(res.locals.user, JSON.parse(String(row.record)))) { res.status(404).json({ error: 'Request not found.' }); return; }
-    res.json({ ...JSON.parse(String(row.record)), revision: row.revision });
+    const record = readableRequest(req.params.id, res.locals.user);
+    if (!record) { res.status(404).json({ error: 'Request not found.' }); return; }
+    res.json(record);
+  });
+  router.post('/requests/:id/document-pdf', async (req, res, next) => {
+    const record = readableRequest(req.params.id, res.locals.user);
+    const token = sessionToken(req);
+    if (!record || !token) { res.status(404).json({ error: 'Request not found.' }); return; }
+    const { version, updatedAt } = req.body ?? {};
+    if (!['Admin Work Request', 'Administrative & Payment Request', 'IT Request', 'Cash Voucher', 'Expense Claim'].includes(record.formType)
+      || !Number.isSafeInteger(version) || (version !== record.documentVersion && !(record.versionSnapshots ?? []).some(item => item.version === version))) {
+      res.status(404).json({ error: 'Document version unavailable.' }); return;
+    }
+    if (record.updatedAt !== updatedAt) { res.status(409).json({ error: 'Request changed. Refresh before downloading.' }); return; }
+    if (renderingPdf) { res.status(503).json({ error: 'Another PDF is being generated. Try again shortly.' }); return; }
+    renderingPdf = true;
+    try {
+      const pdf = await renderDocumentPdf(origin, record.id, version, updatedAt, token);
+      const currentUser = sessionUser(db, token);
+      const current = currentUser && readableRequest(record.id, currentUser);
+      if (!current || currentUser.id !== res.locals.user.id) { res.status(404).json({ error: 'Request not found.' }); return; }
+      if (current.revision !== record.revision) { res.status(409).json({ error: 'Request changed. Refresh before downloading.' }); return; }
+      res.type('application/pdf').send(pdf);
+    } catch (error) {
+      next(error);
+    } finally {
+      renderingPdf = false;
+    }
   });
   return router;
 }

@@ -4,7 +4,7 @@ import { useApp } from '../../context/AppContext';
 import {
   Inbox,
   FileText,
-  PlusCircle,
+  House,
   FolderOpen,
   Library,
   Archive,
@@ -47,7 +47,7 @@ export const AppSidebar: React.FC = () => {
 
   // Count requests pending current user's approval
   const pendingApprovalsCount = companyRequests.filter(
-    (r) => needsMyAction(r,currentUser.id)
+    (r) => needsMyAction(r, currentUser)
   ).length;
 
   // Count user's own active requests
@@ -77,11 +77,11 @@ export const AppSidebar: React.FC = () => {
   };
 
   const isMyApprovalsActive =
-    (activeView === 'dashboard' || activeView === 'requests') && requestsFilter === 'pending';
+    activeView === 'requests' && requestsFilter === 'pending';
   const isMyRequestsActive =
-    (activeView === 'dashboard' || activeView === 'requests') && requestsFilter === 'my';
+    activeView === 'requests' && requestsFilter === 'my';
   const isAllRequestsActive =
-    (activeView === 'dashboard' || activeView === 'requests') && requestsFilter === 'all';
+    activeView === 'requests' && requestsFilter === 'all';
 
   const isGroupView = selectedScope === PARENT_ORGANIZATION_ID;
 
@@ -97,19 +97,19 @@ export const AppSidebar: React.FC = () => {
       )}
 
       <aside
-        className={`app-sidebar w-64 bg-[#192B3C] text-slate-200 flex flex-col justify-between shrink-0 h-screen border-r border-[#24394E] select-none transition-transform duration-200 ease-in-out fixed inset-y-0 left-0 z-50 ${
-          isMobileSidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
-        } md:static md:translate-x-0 md:shadow-none md:z-30`}
+        className={`app-sidebar w-64 bg-linear-to-br from-[#102135] via-[#10283e] to-[#0a324b] text-slate-200 flex flex-col justify-between shrink-0 h-dvh border-r border-workspace-rail-line select-none motion-safe:transition-transform motion-safe:duration-150 fixed inset-y-0 left-0 z-50 ${
+          isMobileSidebarOpen ? 'visible translate-x-0 shadow-2xl' : 'invisible -translate-x-full'
+        } md:sticky md:top-0 md:self-start md:visible md:translate-x-0 md:shadow-none md:z-30`}
       >
         {/* TOP SECTION: Header & Scrollable Nav */}
         <div className="flex flex-col min-h-0 flex-1">
           {/* Company & Product Header */}
-          <div className="h-16 flex items-center justify-between px-4 border-b border-[#24394E] bg-[#142332] shrink-0">
+          <div className="h-16 flex items-center justify-between px-4 border-b border-workspace-rail-line bg-workspace-rail-deep shrink-0">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-8 h-8 rounded-md bg-white/10 p-1 flex items-center justify-center shrink-0 border border-white/10 shadow-inner">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-teal-200/20 bg-teal-200/10 p-1.5">
                 <img
                   src="/assets/aistudio/precision-logo_e56c0764.png"
-                  alt="Precision Engineering Group"
+                  alt=""
                   className="w-6 h-6 object-contain brightness-0 invert"
                   loading="eager"
                 />
@@ -138,27 +138,33 @@ export const AppSidebar: React.FC = () => {
           </div>
 
           {/* Scrollable Navigation List */}
-          <nav className="p-3 space-y-1 text-xs font-medium overflow-y-auto flex-1">
+          <nav aria-label="Workspace navigation" className="flex-1 space-y-1 overflow-y-auto p-3 text-xs font-medium [&_button:focus-visible]:outline-2 [&_button:focus-visible]:-outline-offset-2 [&_button:focus-visible]:outline-teal-200">
             {/* Section: Workflow Operations */}
             <div className="px-3 py-1.5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
               Workspace
             </div>
 
+            <button type="button" onClick={() => handleNav('dashboard', 'all')} aria-current={activeView === 'dashboard' ? 'page' : undefined}
+              className={`flex min-h-10 w-full items-center gap-2.5 rounded-lg px-3 text-sm font-semibold ${activeView === 'dashboard' ? 'bg-[#075c70] text-white' : 'text-slate-200 hover:bg-[#24394E]'}`}>
+              <House aria-hidden="true" className="size-4 shrink-0" /> Overview
+            </button>
+
             {/* 1. My Approvals */}
             <button
-              onClick={() => handleNav('dashboard', 'pending')}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all ${
+              onClick={() => handleNav('requests', 'pending')}
+              aria-current={isMyApprovalsActive ? 'page' : undefined}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-md border-s-2 border-transparent transition-colors ${
                 isMyApprovalsActive
-                  ? 'bg-[#365C78] text-white font-semibold shadow-sm border-l-4 border-amber-400'
+                  ? 'border-s-teal-300 bg-workspace-rail-selected font-semibold text-white'
                   : 'text-slate-300 hover:bg-[#24394E] hover:text-white'
               }`}
             >
               <div className="flex items-center gap-2.5 min-w-0">
-                <Inbox className={`w-4 h-4 shrink-0 ${isMyApprovalsActive ? 'text-amber-400' : 'text-slate-300'}`} />
+                <Inbox aria-hidden="true" className={`size-4 shrink-0 ${isMyApprovalsActive ? 'text-teal-200' : 'text-slate-300'}`} />
                 <span className="truncate">Needs my action</span>
               </div>
               {pendingApprovalsCount > 0 ? (
-                <span className="bg-amber-500 text-slate-950 text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center tabular-nums shadow-xs">
+                <span className="bg-cyan-200 text-[#12374d] text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center tabular-nums shadow-xs">
                   {pendingApprovalsCount}
                 </span>
               ) : (
@@ -168,44 +174,33 @@ export const AppSidebar: React.FC = () => {
 
             {/* 2. My Requests */}
             <button
-              onClick={() => handleNav('dashboard', 'my')}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all ${
+              onClick={() => handleNav('requests', 'my')}
+              aria-current={isMyRequestsActive ? 'page' : undefined}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-md border-s-2 border-transparent transition-colors ${
                 isMyRequestsActive
-                  ? 'bg-[#365C78] text-white font-semibold shadow-sm border-l-4 border-sky-400'
+                  ? 'border-s-teal-300 bg-workspace-rail-selected font-semibold text-white'
                   : 'text-slate-300 hover:bg-[#24394E] hover:text-white'
               }`}
             >
               <div className="flex items-center gap-2.5 min-w-0">
-                <FileText className={`w-4 h-4 shrink-0 ${isMyRequestsActive ? 'text-sky-300' : 'text-slate-300'}`} />
+                <FileText aria-hidden="true" className={`size-4 shrink-0 ${isMyRequestsActive ? 'text-teal-200' : 'text-slate-300'}`} />
                 <span className="truncate">My PreciRoutes</span>
               </div>
               <span className="text-[10px] text-slate-400 tabular-nums font-mono">{myRequestsCount}</span>
             </button>
 
-            {/* 3. Create Request */}
-            <button
-              onClick={() => handleNav('create-request')}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all ${
-                activeView === 'create-request'
-                  ? 'bg-[#365C78] text-white font-semibold shadow-sm border-l-4 border-emerald-400'
-                  : 'text-slate-200 hover:bg-[#24394E] hover:text-white'
-              }`}
-            >
-              <PlusCircle className="w-4 h-4 shrink-0 text-emerald-400" />
-              <span className="truncate">New PreciRoute</span>
-            </button>
-
             {/* 4. All Requests */}
             <button
-              onClick={() => handleNav('dashboard', 'all')}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all ${
+              onClick={() => handleNav('requests', 'all')}
+              aria-current={isAllRequestsActive ? 'page' : undefined}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-md border-s-2 border-transparent transition-colors ${
                 isAllRequestsActive
-                  ? 'bg-[#365C78] text-white font-semibold shadow-sm border-l-4 border-indigo-400'
+                  ? 'border-s-teal-300 bg-workspace-rail-selected font-semibold text-white'
                   : 'text-slate-300 hover:bg-[#24394E] hover:text-white'
               }`}
             >
               <div className="flex items-center gap-2.5 min-w-0">
-                <FolderOpen className={`w-4 h-4 shrink-0 ${isAllRequestsActive ? 'text-indigo-300' : 'text-slate-300'}`} />
+                <FolderOpen aria-hidden="true" className={`size-4 shrink-0 ${isAllRequestsActive ? 'text-teal-200' : 'text-slate-300'}`} />
                 <span className="truncate">All routes</span>
               </div>
               <span className="text-[10px] text-slate-400 tabular-nums font-mono">{companyRequests.length}</span>
@@ -219,9 +214,9 @@ export const AppSidebar: React.FC = () => {
             {/* 5. Forms Library */}
             <button
               onClick={() => handleNav('forms-library')}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all ${
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md border-s-2 border-transparent transition-colors ${
                 activeView === 'forms-library'
-                  ? 'bg-[#365C78] text-white font-semibold shadow-sm border-l-4 border-blue-400'
+                  ? 'border-s-teal-300 bg-workspace-rail-selected font-semibold text-white'
                   : 'text-slate-300 hover:bg-[#24394E] hover:text-white'
               }`}
             >
@@ -232,9 +227,9 @@ export const AppSidebar: React.FC = () => {
             {/* 6. Archive */}
             <button
               onClick={() => handleNav('archive')}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all ${
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md border-s-2 border-transparent transition-colors ${
                 activeView === 'archive'
-                  ? 'bg-[#365C78] text-white font-semibold shadow-sm border-l-4 border-purple-400'
+                  ? 'border-s-teal-300 bg-workspace-rail-selected font-semibold text-white'
                   : 'text-slate-300 hover:bg-[#24394E] hover:text-white'
               }`}
             >
@@ -265,7 +260,7 @@ export const AppSidebar: React.FC = () => {
                     }`}
                   >
                     <Sliders className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">Forms &amp; Workflows</span>
+                    <span className="truncate">Signing routes</span>
                   </button>
 
 
@@ -294,7 +289,7 @@ export const AppSidebar: React.FC = () => {
         </div>
 
         {/* BOTTOM FIXED FOOTER: Organization Scope & User Persona Card */}
-        <div className="p-3 border-t border-[#24394E] bg-[#12202D] shrink-0 space-y-2">
+        <div className="p-3 border-t border-workspace-rail-line bg-workspace-rail-deep shrink-0 space-y-2">
           {/* Active Viewing Scope Card */}
           <div className="relative">
             <button
@@ -387,7 +382,7 @@ export const AppSidebar: React.FC = () => {
           <div className="relative">
             <button
               onClick={() => { if (!readOnly) setShowUserMenu(!showUserMenu); }}
-              className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-[#24394E] transition-all text-left border border-[#24394E] hover:border-[#365C78] bg-[#182838]/60"
+              className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-[#24394E] transition-colors text-left border border-[#24394E] hover:border-[#365C78] bg-[#182838]/60"
             >
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="relative shrink-0">

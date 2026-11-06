@@ -19,7 +19,7 @@ import {
 } from '../utils/companyAccess';
 import { DraftCoordinator } from '../services/draftCoordinator';
 import { LocalActionRepository } from '../services/localActionRepository';
-import type { BootstrapData, VersionedRequest } from '../services/apiTypes';
+import type { BootstrapData, SubmitInput, VersionedRequest } from '../services/apiTypes';
 import { ApiError } from '../services/apiTypes';
 import type { ApiPreciSignRepository } from '../services/apiRepository';
 
@@ -88,8 +88,9 @@ interface AppContextType {
     formData: AdminWorkFormData,
     attachments?: AttachmentItem[],
     comment?: string,
-    signatureDataUrl?: string
-  ) => Promise<{ success: boolean; newId?: string; error?: string }>;
+    signatureDataUrl?: string,
+    signerChoices?: SubmitInput['signerChoices']
+  ) => Promise<{ success: boolean; newId?: string; error?: string; routeChanged?: boolean }>;
   approveRequest: (
     requestId: string,
     comment?: string,
@@ -113,7 +114,9 @@ interface AppContextType {
   replaceSigner: (id: string, stageId: string, newUserId: string, reason: string) => Promise<{ success: boolean; error?: string }>;
   acceptReplacement: (id: string, accept: boolean) => Promise<{ success: boolean; error?: string }>;
   readLatestRoute: (id: string) => Promise<RequestRecord | null>;
+  downloadDocumentPdf?: (id: string, version: number, updatedAt: string) => Promise<Blob>;
   cancelRoute: (id: string, reason: string) => Promise<{ success: boolean; error?: string }>;
+  recordRouteProcessing: (id: string, action: import('../utils/routeProcessing').ProcessingCommand, note: string, signatureDataUrl?: string, attachment?: AttachmentItem) => Promise<{ success: boolean; error?: string }>;
   directorOverrideAction: (
     requestId: string,
     reason: string,
@@ -340,21 +343,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
   // Demo actions use the same intent contract as the API adapter.
   const actionRepository = useMemo(() => apiRepository || new LocalActionRepository(currentUserId), [currentUserId, apiRepository]);
   const actionFailure = (error: unknown) => ({ success: false, error: error instanceof Error ? error.message : 'Could not save request.' });
-  const submitNewRequest = async (formData: AdminWorkFormData, attachments: AttachmentItem[] = [], comment?: string, signatureDataUrl?: string) => {
+  const submitNewRequest = async (formData: AdminWorkFormData, attachments: AttachmentItem[] = [], comment?: string, signatureDataUrl?: string, signerChoices?: SubmitInput['signerChoices']) => {
     const validation = validateOriginatingCompany(selectedScope, formData.companyId, currentUser.companyId);
     if (!validation.isValid || !validation.companyId) return { success: false, error: validation.error };
     try {
-      const input = { companyId: validation.companyId, formType: 'Admin Work Request' as const,
-        formData: { dateOfRequest: formData.dateOfRequest, department: formData.department, priority: formData.priority, workDescription: formData.workDescription, documents: formData.documents },
+      const formType = formData.cashVoucher ? 'Cash Voucher'
+        : formData.expenseClaim ? 'Expense Claim'
+        : formData.itRequest ? 'IT Request'
+        : formData.administrativePayment ? 'Administrative & Payment Request' : 'Admin Work Request';
+      const legacy = formType === 'Admin Work Request';
+      const input: SubmitInput = { companyId: validation.companyId, formType,
+        signerChoices,
+        expectedWorkflowVersion: legacy ? undefined : workflows.find(workflow => workflow.companyId === validation.companyId && workflow.formType === formType)?.version,
+        formData: { dateOfRequest: formData.dateOfRequest, department: formData.department, priority: formData.priority, workDescription: formData.workDescription, documents: formData.documents, administrativePayment: formData.administrativePayment, itRequest: formData.itRequest, cashVoucher: formData.cashVoucher, expenseClaim: formData.expenseClaim },
         attachments, comment, signatureDataUrl: signatureDataUrl || '' };
-      const record = draftCoordinator
+      const record = draftCoordinator && legacy
         ? await draftCoordinator.submit(validation.companyId, currentUserId, input)
         : await actionRepository.submit(input);
       setRequests(prev => [record, ...prev]);
-      if (draftCoordinator) { if (activeDraftKey.current === draftKey) setDraftFormData(null); }
-      else try { await clearDraft(); } catch (error) { console.error('Request saved but draft could not be cleared:', error); }
+      if (legacy) {
+        if (draftCoordinator) { if (activeDraftKey.current === draftKey) setDraftFormData(null); }
+        else try { await clearDraft(); } catch (error) { console.error('Request saved but draft could not be cleared:', error); }
+      }
       return { success: true, newId: record.id };
-    } catch (error) { return actionFailure(error); }
+    } catch (error) {
+      if ((formData.administrativePayment || formData.itRequest || formData.cashVoucher || formData.expenseClaim) && error instanceof ApiError && error.status === 409) {
+        try {
+          const [latestWorkflows, latestUsers] = await Promise.all([actionRepository.getWorkflows(), actionRepository.getUsers()]);
+          setWorkflows(latestWorkflows);
+          setUsers(latestUsers);
+          return { ...actionFailure(error), routeChanged: true };
+        } catch {
+          return { success: false, routeChanged: true, error: 'The route changed and could not be refreshed. Your entries are still here. Check your connection and try again.' };
+        }
+      }
+      return actionFailure(error);
+    }
   };
   const revisionOf = (id: string) => (requests.find(r => r.id === id) as VersionedRequest | undefined)?.revision ?? 1;
   const pendingActions = useRef(new Set<string>());
@@ -382,12 +406,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
   const returnRequest = (id: string, reason: string) => runAction(id, () => actionRepository.returnForCorrection(id, { expectedRevision: revisionOf(id), reason }));
   const rejectRequestAction = (id: string, reason: string) => runAction(id, () => actionRepository.reject(id, { expectedRevision: revisionOf(id), reason }));
   const resubmitRequest = (id: string, formData: AdminWorkFormData, changeNote?: string, signatureDataUrl?: string, attachments?: AttachmentItem[]) => runAction(id, () => actionRepository.resubmit(id, {
-    expectedRevision: revisionOf(id), formData: { dateOfRequest: formData.dateOfRequest, department: formData.department, priority: formData.priority, workDescription: formData.workDescription, documents: formData.documents }, changeNote, signatureDataUrl: signatureDataUrl || '', attachments,
+    expectedRevision: revisionOf(id), formData: {
+      dateOfRequest: formData.dateOfRequest, department: formData.department, priority: formData.priority,
+      workDescription: formData.workDescription, documents: formData.documents, itRequest: formData.itRequest,
+      administrativePayment: formData.administrativePayment && {
+        documentDescription: formData.administrativePayment.documentDescription, payment: formData.administrativePayment.payment,
+      },
+      expenseClaim: formData.expenseClaim && {
+        designation: formData.expenseClaim.designation, project: formData.expenseClaim.project, lines: formData.expenseClaim.lines,
+      },
+    }, changeNote, signatureDataUrl: signatureDataUrl || '', attachments,
   }));
   const readLatestRoute = (id: string) => actionRepository.getRequestById(id);
   const replaceSigner = (id: string, stageId: string, newUserId: string, reason: string) => runAction(id, () => actionRepository.replaceSigner(id,{ expectedRevision: revisionOf(id), stageId, newUserId, reason }));
   const acceptReplacement = (id: string, accept: boolean) => runAction(id, () => actionRepository.acceptReplacement(id,{ expectedRevision: revisionOf(id), accept }));
   const cancelRoute = (id: string, reason: string) => runAction(id, () => actionRepository.cancel(id, { expectedRevision: revisionOf(id), reason }));
+  const recordRouteProcessing: AppContextType['recordRouteProcessing'] = (id, action, note, signatureDataUrl, attachment) => runAction(id, () => actionRepository.recordProcessing(id, { expectedRevision: revisionOf(id), action, note, signatureDataUrl, attachment }));
   const directorOverrideAction = (id: string, reason: string, signatureDataUrl?: string) => runAction(id, () => actionRepository.override(id, { expectedRevision: revisionOf(id), reason, signatureDataUrl: signatureDataUrl || '' }));
 
   const resetDemoData = async () => {
@@ -456,9 +490,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
         rejectRequestAction,
         directorOverrideAction,
         cancelRoute,
+        recordRouteProcessing,
         replaceSigner,
         acceptReplacement,
         readLatestRoute,
+        downloadDocumentPdf: apiRepository
+          ? (id, version, updatedAt) => apiRepository.downloadDocumentPdf(id, version, updatedAt)
+          : async (id, version, updatedAt) => {
+              const record = await actionRepository.getRequestById(id);
+              if (!record || !canReadPreciRoute(currentUser, record) || record.updatedAt !== updatedAt) throw new Error('The route changed or is unavailable. Reload and review before downloading.');
+              const { createDemoDocumentPdf } = await import('../components/document/downloadDemoPdf');
+              const pdf = await createDemoDocumentPdf(record, version);
+              const latest = await actionRepository.getRequestById(id);
+              if (!latest || !canReadPreciRoute(currentUser, latest) || latest.updatedAt !== updatedAt) throw new Error('The route changed or is unavailable. Reload and review before downloading.');
+              return pdf;
+            },
         resetDemoData,
       }}
     >

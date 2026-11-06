@@ -1,5 +1,110 @@
 @import "tailwindcss";
 
+@theme static {
+  --color-workspace: #eef3f6;
+  --color-workspace-ink: #16283a;
+  --color-workspace-muted: #52667a;
+  --color-workspace-line: #d5dfe7;
+  --color-workspace-steel: #315873;
+  --color-workspace-teal: #0b625d;
+  --color-workspace-teal-hover: #084d49;
+  --color-workspace-tint: #e5f3ef;
+  --color-workspace-rail: #112233;
+  --color-workspace-rail-deep: #0e1d2c;
+  --color-workspace-rail-line: #293f52;
+  --color-workspace-rail-selected: #29465b;
+}
+
+@layer components {
+  @media screen {
+    .inbox-stat {
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+      --stat-color: #155487;
+      --stat-tint: #e9f3ff;
+      --stat-edge: #bdd8f5;
+      color: var(--stat-color);
+      border-color: var(--stat-edge);
+      background: linear-gradient(110deg, white, var(--stat-tint));
+      box-shadow: 0 1px 2px rgb(22 40 58 / 7%);
+    }
+
+    .inbox-stat[data-tone="open"],
+    .inbox-stat[data-tone="complete"] {
+      --stat-color: #086554;
+      --stat-tint: #e7f7f4;
+      --stat-edge: #b6ded8;
+    }
+
+    .inbox-stat[data-tone="returned"] {
+      --stat-color: #914300;
+      --stat-tint: #fff2e5;
+      --stat-edge: #f4d4ad;
+    }
+
+    .inbox-stat::after {
+      content: "";
+      position: absolute;
+      z-index: -1;
+      inset: auto -8% -75% 53%;
+      height: 105%;
+      border-radius: 48% 55% 0 0;
+      transform: rotate(-11deg);
+      background: var(--stat-edge);
+      opacity: 0.38;
+      pointer-events: none;
+    }
+
+    .inbox-stat-icon { background: var(--stat-tint); }
+    .inbox-stat[aria-pressed="true"] { border-color: var(--stat-color); }
+
+    @media (hover: hover) {
+      .inbox-stat:hover { border-color: var(--stat-color); }
+    }
+
+    .workspace-panel {
+      border: 1px solid var(--color-workspace-line);
+      border-radius: 0.75rem;
+      background: white;
+      box-shadow: 0 1px 2px rgb(22 40 58 / 5%), 0 3px 10px rgb(22 40 58 / 3%);
+    }
+
+    .workspace-primary {
+      border: 1px solid transparent;
+      border-radius: 0.5rem;
+      background: var(--color-workspace-teal);
+      color: white;
+      font-weight: 600;
+      transition: background-color 150ms ease-out;
+    }
+
+    .workspace-control {
+      border: 1px solid var(--color-workspace-line);
+      border-radius: 0.5rem;
+      background: white;
+      color: var(--color-workspace-ink);
+      transition: background-color 150ms ease-out, border-color 150ms ease-out;
+    }
+
+    .workspace-control:is(input, select, textarea) { border-color: #8293a3; }
+
+    @media (hover: hover) {
+      .workspace-primary:enabled:hover { background: var(--color-workspace-teal-hover); }
+      .workspace-control:enabled:hover { border-color: #8293a3; background: #f8fafc; }
+    }
+
+    .workspace-primary:focus-visible,
+    .workspace-control:focus-visible {
+      outline: 2px solid var(--color-workspace-steel);
+      outline-offset: 2px;
+    }
+
+    .workspace-primary:disabled,
+    .workspace-control:disabled { opacity: 0.6; }
+  }
+}
+
 @layer base {
   body {
     font-family: 'IBM Plex Sans', 'Inter', system-ui, -apple-system, sans-serif;
@@ -10,6 +115,7 @@
 
 /* Print Styles for A4 official form */
 @media print {
+  .document-preview-page { zoom: 1 !important; }
   html,
   body {
     background: white !important;
@@ -26,6 +132,7 @@
   /* Hide application chrome: sidebar, top app header, controls, buttons, toolbars */
   .app-sidebar,
   .app-header,
+  .request-create > :not(:has(.printable-area)),
   .no-print,
   button {
     display: none !important;
@@ -86,5 +193,46 @@
   @page {
     size: A4 portrait;
     margin: 10mm;
+  }
+
+  @page cash-voucher {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+
+  main:has(.cash-voucher-document) {
+    page: cash-voucher;
+  }
+
+  body:has(.request-review .printable-area, .admin-payment-document, .it-request-document) .demo-workspace-notice {
+    display: none !important;
+  }
+
+  main :has(.admin-payment-document, .it-request-document):not(.no-print),
+  .request-create,
+  .request-create :has(.printable-area),
+  .document-preview-page,
+  .request-review,
+  .request-review :has(.printable-area),
+  .request-review .printable-area > div {
+    display: block !important;
+    position: static !important;
+    height: auto !important;
+    max-height: none !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    transform: none !important;
+  }
+
+  .admin-payment-document,
+  .it-request-document {
+    margin-inline: auto !important;
+  }
+
+  .cash-voucher-document {
+    width: 100% !important;
+    max-width: 277mm !important;
   }
 }

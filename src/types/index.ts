@@ -64,6 +64,18 @@ export interface AdminWorkFormChecklist {
   othersDescription: string;
 }
 
+export interface AdministrativePaymentDetails {
+  documentDescription: string;
+  payment?: {
+    amount: string;
+    transferMode: 'Bank' | 'Cash' | 'Cheque';
+    transferDetails?: string;
+    purpose: 'Government Payment' | 'Advance Cash' | 'Other';
+    otherPurpose?: string;
+  };
+  departmentHeadSignature?: { name: string; dataUrl: string };
+}
+
 export interface AdminWorkFormData {
   dateOfRequest: string;
   companyId: CompanyId;
@@ -74,6 +86,10 @@ export interface AdminWorkFormData {
   priority: PriorityLevel;
   workDescription: string;
   documents: AdminWorkFormChecklist;
+  administrativePayment?: AdministrativePaymentDetails;
+  itRequest?: { requestType: string; justification: string };
+  cashVoucher?: { payee: string; recipientUserId?: string; amount: string; amountInWords: string; source: 'Admin petty cash' | 'Accounts cash' };
+  expenseClaim?: { designation: string; project: string; lines: { date: string; particulars: string; amount: string; noBillReason?: string; receiptIndex?: number }[]; departmentHeadSignature?: { name: string; dataUrl: string } };
   // Signatures on paper document
   requesterSignatureName?: string;
   requesterSignatureDate?: string;
@@ -94,6 +110,11 @@ export interface AdminWorkFormData {
 }
 
 export interface WorkflowStageConfig {
+  eligibleSignerIds?: string[];
+  requiredOnSubmit?: boolean;
+  mustSign?: boolean;
+  backupSignerIds?: string[];
+  backupCompletionUserIds?: string[];
   id: string;
   stageNumber: number;
   name: string;
@@ -106,6 +127,7 @@ export interface WorkflowStageConfig {
 }
 
 export interface WorkflowConfig {
+  allowCashReceiptWaiver?: boolean;
   processingUserIds?: string[];
   id: string;
   formType: string;
@@ -121,6 +143,7 @@ export interface WorkflowConfig {
 }
 
 export interface ApprovalStepState {
+  primarySignerId?: string;
   stageId: string;
   stageNumber: number;
   stageName: string;
@@ -156,11 +179,26 @@ export interface AttachmentItem {
   dataUrl?: string;
 }
 
+export interface ProcessingMilestone {
+  signatureDataUrl?: string;
+  byUserId: string;
+  byName: string;
+  at: string;
+  note: string;
+}
+
 export interface RequestRecord {
+  financeHoldHistory?: (ProcessingMilestone & {
+    action: 'hold' | 'evidence' | 'resume' | 'correction';
+    documentVersion: number;
+    attachment?: AttachmentItem;
+  })[];
+  omittedSigningSteps?: string[];
+  processing?: { itWork?: ProcessingMilestone; payment?: ProcessingMilestone; adminWork?: ProcessingMilestone; expenseSettlement?: ProcessingMilestone; cashPayout?: ProcessingMilestone; cashReceipt?: ProcessingMilestone; cashReceiptWaiver?: ProcessingMilestone };
   formerSignerIds?: string[];
   pendingReplacement?: { stageId: string; oldUserId: string; newUserId: string; reason: string; proposedBy: string };
   id: string;
-  formType: 'Admin Work Request' | 'Payment Request' | 'IT Request' | 'IT Asset Allocation' | 'Undertaking Guarantee';
+  formType: 'Admin Work Request' | 'Administrative & Payment Request' | 'Payment Request' | 'IT Request' | 'Cash Voucher' | 'Expense Claim' | 'IT Asset Allocation' | 'Undertaking Guarantee';
   companyId: CompanyId;
   title: string;
   requesterId: string;

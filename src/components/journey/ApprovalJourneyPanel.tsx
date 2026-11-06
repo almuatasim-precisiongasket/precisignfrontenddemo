@@ -72,7 +72,7 @@ export const ApprovalJourneyPanel: React.FC<ApprovalJourneyPanelProps> = ({
         return (
           <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
             <ShieldCheck className="w-3 h-3 text-slate-500" />
-            <span>Director Override</span>
+            <span>Bypassed</span>
           </span>
         );
       case 'current':
@@ -92,7 +92,7 @@ export const ApprovalJourneyPanel: React.FC<ApprovalJourneyPanelProps> = ({
       default:
         return (
           <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-50 text-slate-500 border border-slate-200">
-            <span>Upcoming</span>
+            <span>{milestone.statusLabel}</span>
           </span>
         );
     }
@@ -244,8 +244,8 @@ export const ApprovalJourneyPanel: React.FC<ApprovalJourneyPanelProps> = ({
         {activeTab === 'journey' && (
           <div className="p-4 space-y-4">
             <div className="flex items-center justify-between text-[11px] text-slate-500 pb-1 border-b border-[#E2E5E9]">
-              <span className="font-semibold text-slate-700">Chronological Route &amp; Milestones</span>
-              <span className="font-mono text-[10px]">Wf v{journey.workflowVersion}</span>
+              <span className="font-semibold text-slate-700">Signing steps</span>
+              <span className="text-[11px] tabular-nums">Route v{journey.workflowVersion}</span>
             </div>
 
             <div className="relative space-y-5 pt-1">
@@ -253,11 +253,12 @@ export const ApprovalJourneyPanel: React.FC<ApprovalJourneyPanelProps> = ({
                 const isLast = idx === milestones.length - 1;
 
                 return (
-                  <div key={m.id} className="relative flex items-start gap-3">
+                  <div key={m.id} aria-current={m.status === 'current' ? 'step' : undefined} className="relative flex items-start gap-3">
                     {/* Vertical Connector Line */}
                     {!isLast && (
                       <div
-                        className={`absolute left-3.5 top-8 bottom--4 w-0.5 transition-colors ${
+                        aria-hidden="true"
+                        className={`absolute left-3.5 top-8 -bottom-4 w-0.5 transition-colors ${
                           m.status === 'completed' || m.status === 'submitted'
                             ? 'bg-emerald-500'
                             : m.status === 'returned'
@@ -268,7 +269,7 @@ export const ApprovalJourneyPanel: React.FC<ApprovalJourneyPanelProps> = ({
                     )}
 
                     {/* Step Icon Node */}
-                    <div
+                    <div aria-hidden="true"
                       className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 z-10 border transition-all ${getNodeVisual(
                         m
                       )}`}
@@ -287,10 +288,10 @@ export const ApprovalJourneyPanel: React.FC<ApprovalJourneyPanelProps> = ({
                     </div>
 
                     {/* Milestone Content Details */}
-                    <div className="flex-1 min-w-0 bg-[#F9FAFB] border border-[#E2E5E9] rounded-md p-3 space-y-1.5">
+                    <div className={`flex-1 min-w-0 rounded-md border p-3 space-y-1.5 ${m.status === 'current' ? 'border-[#C2D5E3] bg-[#EBF2F7]' : 'border-slate-200 bg-[#F9FAFB]'}`}>
                       <div className="flex flex-wrap items-center justify-between gap-1">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="font-bold text-xs text-[#192B3C] truncate">
+                        <div className="flex flex-wrap items-baseline gap-x-1.5 min-w-0">
+                          <span className="font-semibold text-xs text-[#192B3C] [overflow-wrap:anywhere]">
                             {m.participantName}
                           </span>
                           <span className="text-[10px] text-slate-500 font-medium">
@@ -357,7 +358,7 @@ export const ApprovalJourneyPanel: React.FC<ApprovalJourneyPanelProps> = ({
         {activeTab === 'history' && (
           <div className="p-4 space-y-3">
             <div className="text-[11px] text-slate-500 pb-1 border-b border-[#E2E5E9]">
-              Immutable audit log of all document actions and version transitions.
+              See who acted, when, and on which version.
             </div>
 
             <div className="space-y-2.5">

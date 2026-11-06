@@ -70,7 +70,7 @@ export async function createApp(db: DatabaseSync, config: ServerConfig) {
     db.prepare('DELETE FROM sessions WHERE token_hash=?').run(tokenHash(token(req.get('Cookie'))!));
     res.setHeader('Set-Cookie', cookie('', 0)); res.status(204).end();
   });
-  app.use('/api', readRoutes(db));
+  app.use('/api', readRoutes(db, origin, req => token(req.get('Cookie'))));
   app.use('/api', requestRoutes(db));
   app.use('/api', draftRoutes(db));
   app.use('/api', profileRoutes(db));

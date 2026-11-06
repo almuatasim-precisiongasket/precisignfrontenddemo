@@ -48,6 +48,21 @@ export class ApiPreciSignRepository implements IPreciSignRepository, RequestActi
     return data.map(record => this.record(record));
   }
   async getRequestById(id: string) { return this.record(await this.call(`/requests/${encodeURIComponent(id)}`)); }
+  async downloadDocumentPdf(id: string, version: number, updatedAt: string): Promise<Blob> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (this.actorId) headers['X-PreciSign-User'] = this.actorId;
+    const response = await this.transport(`/api/requests/${encodeURIComponent(id)}/document-pdf`, {
+      method: 'POST', credentials: 'same-origin', headers, body: JSON.stringify({ version, updatedAt }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => undefined);
+      throw new ApiError(response.status, error?.error || 'Could not download PDF.');
+    }
+    if (response.headers.get('Content-Type')?.split(';')[0] !== 'application/pdf') {
+      throw new ApiError(502, 'The server did not return a PDF.');
+    }
+    return response.blob();
+  }
   async submit(input: SubmitInput) { return this.record(await this.call('/requests', 'POST', input)); }
   private async action(id: string, action: string, input: unknown) { return this.record(await this.call(`/requests/${encodeURIComponent(id)}/${action}`, 'POST', input)); }
   approve(id: string, input: ApprovalInput) { return this.action(id, 'approve', input); }
@@ -57,6 +72,7 @@ export class ApiPreciSignRepository implements IPreciSignRepository, RequestActi
   replaceSigner(id: string, input: ReasonInput & { stageId: string; newUserId: string }) { return this.action(id,'replace',input); }
   acceptReplacement(id: string, input: { expectedRevision: number; accept: boolean }) { return this.action(id,'accept-replacement',input); }
   cancel(id: string, input: ReasonInput) { return this.action(id, 'cancel', input); }
+  recordProcessing(id: string, input: Parameters<RequestActions['recordProcessing']>[1]) { return this.action(id, 'process', input); }
   override(id: string, input: OverrideInput) { return this.action(id, 'override', input); }
   private draftPath(company: CompanyId) { return `/drafts/${encodeURIComponent(company)}/${encodeURIComponent('Admin Work Request')}`; }
   private draftState(value: any): DraftState {

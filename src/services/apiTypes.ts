@@ -1,20 +1,25 @@
 import type { AdminWorkDraft, AdminWorkFormData, AttachmentItem, Company, CompanyId, RequestRecord, UserProfile, WorkflowConfig } from '../types/index';
+import type { ProcessingCommand } from '../utils/routeProcessing';
 
 export type VersionedRequest = RequestRecord & { revision: number };
 export const API_CONTRACT_VERSION = 1 as const;
+export const SUBMITTABLE_FORMS = ['Admin Work Request', 'Administrative & Payment Request', 'IT Request', 'Cash Voucher', 'Expense Claim'] as const;
+export type SubmittableForm = typeof SUBMITTABLE_FORMS[number];
 export interface BootstrapData { user: UserProfile; companies: Company[]; users: UserProfile[]; workflows: WorkflowConfig[]; }
 export interface SubmitInput {
+  signerChoices?: Record<string, string | null>;
   expectedDraftRevision?: number;
+  expectedWorkflowVersion?: number;
   companyId: CompanyId;
-  formType: 'Admin Work Request';
-  formData: Pick<AdminWorkFormData, 'dateOfRequest' | 'department' | 'priority' | 'workDescription' | 'documents'>;
+  formType: SubmittableForm;
+  formData: Pick<AdminWorkFormData, 'dateOfRequest' | 'department' | 'priority' | 'workDescription' | 'documents' | 'administrativePayment' | 'itRequest' | 'cashVoucher' | 'expenseClaim'>;
   signatureDataUrl: string;
   attachments?: AttachmentItem[];
   comment?: string;
 }
 export interface ApprovalInput { expectedRevision: number; signatureDataUrl: string; comment?: string; }
 export interface ReasonInput { expectedRevision: number; reason: string; }
-export interface ResubmitInput extends Omit<SubmitInput, 'companyId' | 'formType' | 'comment' | 'expectedDraftRevision'> { expectedRevision: number; changeNote?: string; }
+export interface ResubmitInput extends Omit<SubmitInput, 'companyId' | 'formType' | 'comment' | 'expectedDraftRevision' | 'expectedWorkflowVersion' | 'signerChoices'> { expectedRevision: number; changeNote?: string; }
 export interface DraftState { revision: number; data: AdminWorkDraft | null; }
 export interface PrivateDraftRepository {
   readPrivateDraft(company: CompanyId): Promise<DraftState>;
@@ -23,6 +28,7 @@ export interface PrivateDraftRepository {
 }
 export interface OverrideInput extends ReasonInput { signatureDataUrl: string; }
 export interface RequestActions {
+  recordProcessing(id: string, input: { expectedRevision: number; action: ProcessingCommand; note: string; signatureDataUrl?: string; attachment?: AttachmentItem }): Promise<VersionedRequest>;
   replaceSigner(id: string, input: ReasonInput & { stageId: string; newUserId: string }): Promise<VersionedRequest>;
   acceptReplacement(id: string, input: { expectedRevision: number; accept: boolean }): Promise<VersionedRequest>;
   submit(input: SubmitInput): Promise<VersionedRequest>;

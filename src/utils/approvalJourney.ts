@@ -245,7 +245,11 @@ export function buildApprovalJourney(
     const overrideActor = isStepApproved && step.comments?.startsWith('Approved via Director Override:')
       ? [...approvalHistory].reverse().find((h) => h.version === documentVersion && h.action === 'Director Override')
       : undefined;
-    const participantName = overrideActor?.actionByName || step.assignedUserName;
+    const participantName = overrideActor?.actionByName
+      || (isStepApproved ? matchingHistory?.actionByName : undefined)
+      || step.assignedUserName?.trim()
+      || (isCurrentActiveStep ? currentApproverName?.trim() : undefined)
+      || 'Signer name unavailable';
 
     const isAssignedToUser =
       Boolean(currentUserId) && step.assignedUserId === currentUserId;

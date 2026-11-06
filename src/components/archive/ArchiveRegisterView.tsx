@@ -162,7 +162,7 @@ export const ArchiveRegisterView: React.FC = () => {
       </div>
 
       {/* Practical Filters Strip */}
-      <div className="bg-white border border-[#E2E5E9] rounded-lg p-4 shadow-xs space-y-3">
+      <div className="workspace-panel space-y-3 p-4">
         <div className="flex items-center gap-2 text-xs font-bold text-[#192B3C]">
           <Filter className="w-3.5 h-3.5 text-[#365C78]" />
           <span>Register Filters</span>
@@ -194,7 +194,7 @@ export const ArchiveRegisterView: React.FC = () => {
             <select
               value={companyFilter}
               onChange={(e) => setCompanyFilter(e.target.value)}
-              className="w-full px-2.5 py-1.5 text-xs border border-[#E2E5E9] rounded-md focus:outline-none focus:ring-1 focus:ring-[#365C78] bg-white"
+              className="workspace-control min-h-9 w-full px-2.5 text-xs"
             >
               <option value="ALL">All Companies</option>
               <option value="PEW">Precision Engineering Works (PEW)</option>
@@ -211,7 +211,7 @@ export const ArchiveRegisterView: React.FC = () => {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full px-2.5 py-1.5 text-xs border border-[#E2E5E9] rounded-md focus:outline-none focus:ring-1 focus:ring-[#365C78] bg-white"
+              className="workspace-control min-h-9 w-full px-2.5 text-xs"
             >
               <option value="ALL">All Statuses</option>
               <option value="Approved">Approved</option>
@@ -230,12 +230,12 @@ export const ArchiveRegisterView: React.FC = () => {
             <select
               value={formTypeFilter}
               onChange={(e) => setFormTypeFilter(e.target.value)}
-              className="w-full px-2.5 py-1.5 text-xs border border-[#E2E5E9] rounded-md focus:outline-none focus:ring-1 focus:ring-[#365C78] bg-white"
+              className="workspace-control min-h-9 w-full px-2.5 text-xs"
             >
               <option value="ALL">All Form Types</option>
-              <option value="Admin Work Request">Admin Work Request (PR#21-001FA)</option>
-              <option value="Payment Request">Payment Request Form</option>
-              <option value="IT Request">IT Request Form</option>
+              {[...new Set(companyRequests.map(request => request.formType))].sort().map(type => (
+                <option key={type} value={type}>{type}</option>
+              ))}
             </select>
           </div>
 
@@ -247,7 +247,7 @@ export const ArchiveRegisterView: React.FC = () => {
             <select
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
-              className="w-full px-2.5 py-1.5 text-xs border border-[#E2E5E9] rounded-md focus:outline-none focus:ring-1 focus:ring-[#365C78] bg-white"
+              className="workspace-control min-h-9 w-full px-2.5 text-xs"
             >
               <option value="ALL">All Time</option>
               <option value="7d">Last 7 Days</option>
@@ -258,7 +258,7 @@ export const ArchiveRegisterView: React.FC = () => {
       </div>
 
       {/* High-density Operational Document Register Table */}
-      <div className="bg-white border border-[#E2E5E9] rounded-lg overflow-hidden shadow-xs">
+      <div className="workspace-panel overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>

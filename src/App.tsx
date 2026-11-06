@@ -7,17 +7,20 @@ import { CreateRequestView } from './components/create/CreateRequestView';
 import { ReviewSignView } from './components/review/ReviewSignView';
 import { WorkflowSettingsView } from './components/settings/WorkflowSettingsView';
 import { UserProfileView } from './components/profile/UserProfileView';
-import { FormsLibraryView } from './components/library/FormsLibraryView';
+import { companyForms, FormsLibraryView } from './components/library/FormsLibraryView';
 import { ArchiveRegisterView } from './components/archive/ArchiveRegisterView';
 import { ApiPreciSignRepository } from './services/apiRepository';
 import { ApiError } from './services/apiTypes';
 import { ApiSession, type SessionState } from './services/apiSession';
+import { RequestPdfView } from './components/document/RequestPdfView';
 
 const MainLayout: React.FC = () => {
-  const { activeView, currentUser, selectedScope, selectedRequestId, draftReady, draftError, retryDraft, readOnly, draftCompanyId, selectDraftCompany, companies } = useApp();
+  const { activeView, currentUser, selectedScope, selectedRequestId, selectedRequestFormType, draftReady, draftError, retryDraft, readOnly, draftCompanyId, selectDraftCompany, companies } = useApp();
+  const shortcutForm = companyForms.find(form => form.name === selectedRequestFormType)?.name;
+  const libraryEditor = shortcutForm === 'Administrative & Payment Request' ? undefined : shortcutForm;
 
   return (
-    <div className="min-h-screen bg-[#F5F6F8] flex text-[#192B3C]">
+    <div className="min-h-screen flex bg-workspace text-workspace-ink">
       {/* Dark Navy Sidebar (#192B3C) */}
       <AppSidebar />
 
@@ -27,9 +30,9 @@ const MainLayout: React.FC = () => {
         <AppHeader />
 
         {/* Dynamic View Router */}
-        <main className="flex-1 pb-16 overflow-y-auto">
-          {(activeView === 'dashboard' || activeView === 'requests') && <DashboardView />}
-          {activeView === 'create-request' && (readOnly && !draftCompanyId ? <div className="p-6 text-sm space-y-3"><p>Select an originating subsidiary to open its private draft.</p><select aria-label="Draft company" value="" onChange={event => selectDraftCompany(event.target.value as typeof currentUser.companyId)} className="border rounded p-2"><option value="" disabled>Select company</option>{companies.map(company => <option key={company.id} value={company.id}>{company.fullName}</option>)}</select></div> : draftReady ? <CreateRequestView key={`${currentUser.id}:${selectedScope}:${draftCompanyId}`} /> : <div className="p-6 text-sm">{draftError ? <><p role="alert">{draftError}</p><button onClick={retryDraft} className="mt-2 underline">Retry</button></> : 'Loading draft…'}</div>)}
+        <main className={`flex-1 overflow-y-auto pb-16 ${activeView === "dashboard" || activeView === "requests" ? "bg-linear-to-br from-[#fafbfd] to-[#edf3f9]" : ""}`}>
+          {(activeView === 'dashboard' || activeView === 'requests') && <DashboardView key={activeView} />}
+          {activeView === 'create-request' && (libraryEditor ? <FormsLibraryView key={libraryEditor} initialForm={libraryEditor} /> : readOnly && !draftCompanyId ? <div className="p-6 text-sm space-y-3"><p>Select the company this request is for.</p><select aria-label="Request company" value="" onChange={event => selectDraftCompany(event.target.value as typeof currentUser.companyId)} className="border rounded p-2"><option value="" disabled>Select company</option>{companies.map(company => <option key={company.id} value={company.id}>{company.fullName}</option>)}</select></div> : draftReady || selectedRequestFormType === 'Administrative & Payment Request' ? <CreateRequestView key={`${currentUser.id}:${selectedScope}:${draftCompanyId}:${selectedRequestFormType}`} /> : <div className="p-6 text-sm">{draftError ? <><p role="alert">{draftError}</p><button onClick={retryDraft} className="mt-2 underline">Retry</button></> : 'Loading draft…'}</div>)}
           {activeView === 'review-sign' && <ReviewSignView key={`${currentUser.id}:${selectedScope}:${selectedRequestId}`} />}
           {activeView === 'forms-library' && <FormsLibraryView />}
           {activeView === 'archive' && <ArchiveRegisterView />}
@@ -90,11 +93,20 @@ const ApiApp: React.FC = () => {
 };
 
 export default function App() {
-  if (import.meta.env.VITE_DATA_MODE === 'api') return <ApiApp />;
+  if (import.meta.env.VITE_DATA_MODE === 'api') {
+    if (window.location.pathname === '/document-export') {
+      const params = new URLSearchParams(window.location.search);
+      const requestId = params.get('request');
+      const version = Number(params.get('version'));
+      if (!requestId || !Number.isSafeInteger(version) || version < 1) return <p data-pdf-error>Invalid document version.</p>;
+      return <RequestPdfView requestId={requestId} version={version} />;
+    }
+    return <ApiApp />;
+  }
   if (import.meta.env.VITE_DATA_MODE && import.meta.env.VITE_DATA_MODE !== 'demo') return <div className="p-6 text-sm" role="alert">Invalid data mode. Check the application configuration.</div>;
   return (
     <AppProvider>
-      {import.meta.env.VITE_DEMO_NOTICE === 'true' && <p role="status" className="bg-teal-50 px-6 py-2 text-xs text-teal-900">Demo workspace · Changes stay in this browser. Use sample information only.</p>}
+      {import.meta.env.VITE_DEMO_NOTICE === 'true' && <p role="status" className="demo-workspace-notice bg-teal-50 px-6 py-2 text-xs text-teal-900">Demo workspace · Changes stay in this browser. Use sample information only.</p>}
       <MainLayout />
     </AppProvider>
   );

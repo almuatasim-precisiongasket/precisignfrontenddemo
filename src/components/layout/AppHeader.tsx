@@ -37,7 +37,7 @@ export const AppHeader: React.FC = () => {
 
   // Number of requests requiring current user's approval
   const pendingApprovals = companyRequests.filter(
-    (r) => needsMyAction(r,currentUser.id)
+    (r) => needsMyAction(r, currentUser)
   );
 
   // Search results for global dropdown
@@ -52,7 +52,7 @@ export const AppHeader: React.FC = () => {
     : [];
 
   return (
-    <header className="app-header h-16 bg-white border-b border-[#E2E5E9] px-3 sm:px-6 flex items-center justify-between gap-2 sm:gap-4 sticky top-0 z-20">
+    <header className="app-header sticky top-0 z-20 flex h-16 items-center justify-between gap-2 border-b border-workspace-line bg-white px-3 sm:gap-4 sm:px-6">
       {/* Left: Organization / Company Context (Demo Tenant Selector) */}
       <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
         {/* Mobile Hamburger menu toggle */}
@@ -67,17 +67,18 @@ export const AppHeader: React.FC = () => {
         <div className="relative min-w-0">
           <button
             onClick={() => setCompanyDropdownOpen(!companyDropdownOpen)}
-            className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-md border border-[#E2E5E9] bg-[#F5F6F8] hover:bg-[#EDF0F3] transition-colors text-xs font-semibold text-[#192B3C] max-w-full"
+            aria-expanded={companyDropdownOpen}
+            className="workspace-control flex min-h-9 max-w-full items-center gap-2 px-2.5 text-xs font-semibold sm:px-3"
             title="Active Viewing Scope / Organization"
           >
-            <Building2 className={`w-3.5 h-3.5 shrink-0 ${isGroupView ? 'text-indigo-600' : 'text-[#365C78]'}`} />
+            <Building2 aria-hidden="true" className="size-4 shrink-0 text-workspace-steel" />
             <span className="truncate max-w-[120px] sm:max-w-[210px] md:max-w-[260px]">
               {isGroupView ? 'PRECISION ENGINEERING GROUP' : selectedCompany.fullName}
             </span>
             <span className={`hidden sm:inline-block text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded border uppercase shrink-0 ${
               isGroupView
-                ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                : 'bg-[#EBF2F7] text-[#365C78] border-[#C2D5E3]'
+                ? 'border-teal-200 bg-workspace-tint text-workspace-teal'
+                : 'border-workspace-line bg-workspace text-workspace-steel'
             }`}>
               {isGroupView ? 'Group View' : 'Company View'}
             </span>
@@ -85,7 +86,7 @@ export const AppHeader: React.FC = () => {
           </button>
 
           {companyDropdownOpen && (
-            <div className="absolute top-full left-0 mt-1 w-84 bg-white border border-[#E2E5E9] rounded-lg shadow-lg p-2 z-50">
+            <div className="workspace-panel absolute top-full left-0 z-50 mt-2 w-84 max-w-[calc(100vw-4rem)] p-2">
               <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                 Parent Organization:
               </div>
@@ -96,17 +97,18 @@ export const AppHeader: React.FC = () => {
                 }}
                 className={`w-full text-left px-3 py-2 rounded-md text-xs transition-colors flex items-center justify-between mb-2 ${
                   isGroupView
-                    ? 'bg-indigo-50 text-indigo-900 font-bold border border-indigo-200'
+                    ? 'border border-teal-200 bg-workspace-tint font-bold text-workspace-teal'
                     : 'text-slate-800 hover:bg-slate-100'
                 }`}
               >
                 <div>
                   <div className="font-semibold flex items-center gap-1.5">
-                    <span>🏢 PRECISION ENGINEERING GROUP</span>
+                    <Building2 aria-hidden="true" className="size-4 shrink-0 text-workspace-steel" />
+                    <span>Precision Engineering Group</span>
                   </div>
                   <div className="text-[10px] text-slate-500">All companies you can access</div>
                 </div>
-                {isGroupView && <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" />}
+                {isGroupView && <Check aria-hidden="true" className="size-3.5 shrink-0 text-workspace-teal" />}
               </button>
 
               <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 border-t border-[#E2E5E9] pt-2">
@@ -147,17 +149,15 @@ export const AppHeader: React.FC = () => {
       {/* Center: Global Search Bar */}
       <div className="flex-1 max-w-md hidden md:block relative">
         <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-workspace-muted" />
           <input
             type="text"
+            aria-label="Search all requests"
             placeholder="Search request ID, requester, or work description..."
             value={globalSearch}
             onChange={(e) => setGlobalSearch(e.target.value)}
-            className="w-full pl-9 pr-14 py-1.5 bg-[#F5F6F8] hover:bg-[#EDF0F3] focus:bg-white text-xs border border-[#E2E5E9] rounded-md focus:outline-none focus:ring-1 focus:ring-[#365C78] focus:border-[#365C78] transition-colors text-[#192B3C] placeholder-slate-400"
+            className="workspace-control min-h-9 w-full bg-workspace pl-9 pr-3 text-xs placeholder:text-workspace-muted focus:bg-white"
           />
-          <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono text-slate-400 bg-white px-1.5 py-0.5 rounded border border-[#E2E5E9]">
-            ⌘K
-          </kbd>
         </div>
 
         {/* Search Results Popover */}
@@ -302,8 +302,7 @@ export const AppHeader: React.FC = () => {
 
         {/* User initials badge */}
         <div
-          className="w-8 h-8 rounded flex items-center justify-center text-xs font-bold text-white shadow-xs border border-slate-300"
-          style={{ backgroundColor: currentUser.avatarColor || '#192B3C' }}
+          className="flex size-8 shrink-0 items-center justify-center rounded-md border border-[#C2D5E3] bg-[#EBF2F7] text-xs font-semibold text-[#192B3C]"
           title={`${currentUser.name} (${currentUser.role})`}
         >
           {currentUser.initials}
