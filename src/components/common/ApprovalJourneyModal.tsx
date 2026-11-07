@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { RequestRecord } from '../../types/index';
+import { signingProgress } from '../journey/RouteProgress';
 import { ApprovalJourneyPanel } from '../journey/ApprovalJourneyPanel';
-import { X, ExternalLink, FileText, Building2 } from 'lucide-react';
+import { X, ExternalLink } from 'lucide-react';
 
 interface ApprovalJourneyModalProps {
   request: RequestRecord | null;
@@ -18,21 +19,28 @@ export const ApprovalJourneyModal: React.FC<ApprovalJourneyModalProps> = ({
   onOpenDocument,
   currentUserId,
 }) => {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (!isOpen || !request) return;
+    const trigger = document.activeElement as HTMLElement | null;
+    dialog.current?.showModal();
+    return () => { dialog.current?.close(); if (trigger?.isConnected) trigger.focus(); };
+  }, [isOpen, request?.id]);
   if (!isOpen || !request) return null;
+  const { headline, progress } = signingProgress(request, currentUserId);
 
   return (
-    <div
-      role="dialog"
+    <dialog ref={dialog} onCancel={event => { event.preventDefault(); onClose(); }}
       aria-modal="true"
       aria-labelledby="approval-journey-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
+      className="preci-dialog journey-dialog"
     >
       <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-lg shadow-xl border border-[#CBD5E1] flex flex-col overflow-hidden">
         {/* Modal Header */}
-        <div className="px-5 py-4 border-b border-[#E2E5E9] flex items-center justify-between bg-[#F8FAFC]">
+        <div className="px-4 py-3 border-b border-[#E2E5E9] flex flex-wrap items-center justify-between gap-2 bg-[#F8FAFC]">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="font-mono font-bold text-sm text-[#192B3C]">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="break-all font-mono font-bold text-sm text-[#192B3C]">
                 {request.id}
               </span>
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-[#EBF2F7] text-[#365C78] border border-[#C2D5E3]">
@@ -57,7 +65,7 @@ export const ApprovalJourneyModal: React.FC<ApprovalJourneyModalProps> = ({
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-[#365C78] hover:bg-[#2A4A62] text-white rounded-md text-xs font-semibold shadow-xs transition-colors"
             >
-              <span>Open Document</span>
+              <span>Open request</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </button>
             <button
@@ -71,15 +79,11 @@ export const ApprovalJourneyModal: React.FC<ApprovalJourneyModalProps> = ({
         </div>
 
         {/* Modal Body: Scrollable Journey */}
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+          <p className="px-1 text-xs text-workspace-muted"><strong className="text-workspace-ink">{headline}</strong> · {progress}</p>
           <ApprovalJourneyPanel
             request={request}
             currentUserId={currentUserId}
-            onOpenDocument={(id) => {
-              onClose();
-              onOpenDocument(id);
-            }}
-            showDocumentButton={false}
           />
         </div>
 
@@ -94,6 +98,6 @@ export const ApprovalJourneyModal: React.FC<ApprovalJourneyModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 };

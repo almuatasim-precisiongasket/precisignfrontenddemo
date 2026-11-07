@@ -101,7 +101,7 @@ export const ArchiveRegisterView: React.FC = () => {
       `"${new Date(r.createdAt).toISOString()}"`,
       r.documentVersion,
       r.approvalSteps.length,
-      `"${r.finalApproverName || 'Afzal Kazi'}"`,
+      `"${(r.finalApproverName ?? '').replace(/"/g, '""')}"`,
       `"${r.formData.workDescription.replace(/"/g, '""')}"`,
     ]);
 

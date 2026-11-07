@@ -1,3 +1,9 @@
+import { checkSupportingFiles, SupportingFiles } from './SupportingFiles';
+import { canUserStartForm } from '../../utils/companyAccess';
+import { EditorInput, EditorTextarea, EditorSelect } from './RequestEditorControls';
+import { EditorViewToggle } from './EditorViewToggle';
+import { DraftConfirmDialog } from './DraftConfirmDialog';
+import { useFieldErrors } from './useFieldErrors';
 import React, { useState, useEffect, useRef } from 'react';
 import { ApiError } from '../../services/apiTypes';
 import { useApp } from '../../context/AppContext';
@@ -20,9 +26,7 @@ import {
   Calendar,
   AlertCircle,
   CheckCircle,
-  Paperclip,
   Upload,
-  Trash2,
   ZoomIn,
   ZoomOut,
   Eye,
@@ -51,6 +55,8 @@ export const CreateRequestView: React.FC = () => {
   } = useApp();
   const combined = selectedRequestFormType === 'Administrative & Payment Request';
   const formName = combined ? 'Administrative & Payment Request' : 'Admin Work Request';
+  const validation = useFieldErrors();
+  const [draftDialog, setDraftDialog] = useState<'clear' | 'reload' | null>(null);
   const [choices, setChoices] = useState<Choices>({});
   const draftFormData = combined ? null : savedDraft;
   const [documentDescription, setDocumentDescription] = useState('');
@@ -80,8 +86,8 @@ export const CreateRequestView: React.FC = () => {
     draftFormData?.department ?? (currentUser.department || 'Administration')
   );
 
-  const [priority, setPriority] = useState<PriorityLevel>(
-    (draftFormData?.priority as PriorityLevel) || 'Urgent'
+  const [priority, setPriority] = useState<PriorityLevel | undefined>(
+    draftFormData?.priority ?? (combined ? undefined : 'Urgent')
   );
 
   const [workDescription, setWorkDescription] = useState(
@@ -113,6 +119,7 @@ export const CreateRequestView: React.FC = () => {
   const [draftSaving, setDraftSaving] = useState(false);
   const [draftSaveError, setDraftSaveError] = useState<string | null>(null);
   const [pendingUploads, setPendingUploads] = useState(0);
+  const [attachmentError, setAttachmentError] = useState('');
   const savedGeneration = useRef(0);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [feedbackSuccess, setFeedbackSuccess] = useState<string | null>(null);
@@ -120,7 +127,8 @@ export const CreateRequestView: React.FC = () => {
   const [activeMobileTab, setActiveMobileTab] = useState<'editor' | 'preview'>('editor');
 
   const resolvedCompany = companies.find((c) => c.id === originatingCompanyId) || selectedCompany;
-  const signingWorkflow = workflows.find(workflow => workflow.companyId === originatingCompanyId && workflow.formType === formName);
+  const signingWorkflow = workflows.find(workflow => workflow.companyId === originatingCompanyId && workflow.formType === formName && workflow.stages.length > 0);
+  const canStartSelectedCompany = companies.some(company => company.id === originatingCompanyId && canUserStartForm(currentUser, company.id, formName));
   const signingSteps = signingWorkflow?.stages ?? [];
 
   const draftData = () => ({ dateOfRequest, department, priority, workDescription, documents, companyId: originatingCompanyId, attachments });
@@ -162,7 +170,7 @@ export const CreateRequestView: React.FC = () => {
     requesterId: currentUser.id,
     requesterName: currentUser.name,
     department,
-    priority,
+    priority: priority ?? 'Urgent',
     workDescription,
     documents,
     administrativePayment: combined ? { documentDescription, payment } : undefined,
@@ -179,19 +187,21 @@ export const CreateRequestView: React.FC = () => {
     }));
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  const handleFileUpload = (files: FileList) => {
+    const selected = Array.from(files);
+    const issue = checkSupportingFiles(selected, attachments, 20);
+    setAttachmentError(issue ?? '');
+    if (issue) return;
 
-    setPendingUploads(count => count + files.length);
-    Array.from(files).forEach((file) => {
+    setPendingUploads(count => count + selected.length);
+    selected.forEach((file) => {
       const reader = new FileReader();
       reader.onload = (event) => {
         const dataUrl = event.target?.result as string;
         const sizeFormatted =
           file.size > 1024 * 1024
             ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
-            : `${Math.round(file.size / 1024)} KB`;
+            : `${Math.ceil(file.size / 1024)} KB`;
 
         const newAtt: AttachmentItem = {
           id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -207,10 +217,9 @@ export const CreateRequestView: React.FC = () => {
         setAttachments((prev) => [...prev, newAtt]);
         setPendingUploads(count => count - 1);
       };
-      reader.onerror = () => { setPendingUploads(count => count - 1); setValidationError(`Could not read ${file.name}. Please select it again.`); };
+      reader.onerror = () => { setPendingUploads(count => count - 1); setAttachmentError(`Could not read ${file.name}. Please select it again.`); };
       reader.readAsDataURL(file);
     });
-    e.target.value = '';
   };
 
   const handleRemoveAttachment = (id: string) => {
@@ -218,17 +227,18 @@ export const CreateRequestView: React.FC = () => {
   };
 
   const handleClear = async () => {
-    if (confirm('Are you sure you want to clear the form entries?')) {
+    {
       try {
         if (!combined) await clearDraft();
       } catch (error) {
         setValidationError(`Draft could not be cleared: ${error instanceof Error ? error.message : 'storage error'}`);
-        return;
+        return false;
       }
       setWorkDescription('');
       setDocumentDescription('');
       setPayment(undefined);
       setAttachments([]);
+      if (combined) setPriority(undefined);
       setDocuments({
         onlineDocumentChamber: false,
         physicalDocumentChamber: false,
@@ -243,19 +253,37 @@ export const CreateRequestView: React.FC = () => {
       });
       setFeedbackSuccess('Draft cleared.');
       setTimeout(() => setFeedbackSuccess(null), 3000);
+      return true;
     }
   };
 
   const handleTriggerSubmit = () => {
     if (submitting.current || pendingUploads) return;
     setValidationError(null);
+    setActiveMobileTab('editor');
+    if (combined && !validation.validate([
+      ['company', canStartSelectedCompany, 'Choose a company where you can start this form.'],
+      ['date', !!dateOfRequest, 'Choose a date.'],
+      ['department', !!department.trim(), 'Enter your department.'],
+      ['priority', !!priority, 'Choose a priority.'],
+      ['description', !!workDescription.trim(), 'Describe the work.'],
+      ['amount', !payment || (/^\d{1,9}(\.\d{1,2})?$/.test(payment.amount) && Number(payment.amount) > 0), 'Enter a positive SAR amount.'],
+      ['other', !payment || payment.purpose !== 'Other' || !!payment.otherPurpose?.trim(), 'Describe the payment purpose.'],
+    ])) return;
+    if (!priority) {
+      setValidationError('Choose a priority before submitting.');
+      return;
+    }
     if (!workDescription.trim()) {
       setValidationError('Please enter a work description before submitting.');
       return;
     }
     if (combined) {
       const selection = signingWorkflow && applySignerChoices(signingWorkflow, users, currentUser.id, choices);
-      if (!selection || selection.error) return;
+      if (!selection || selection.error) {
+        requestAnimationFrame(() => document.getElementById('signer-review')?.focus());
+        return;
+      }
     }
     if (payment && (!/^\d{1,9}(\.\d{1,2})?$/.test(payment.amount) || Number(payment.amount) <= 0 || (payment.purpose === 'Other' && !payment.otherPurpose?.trim()))) {
       setValidationError('Enter a positive SAR amount and describe the purpose if you selected Other.');
@@ -291,7 +319,11 @@ export const CreateRequestView: React.FC = () => {
   };
 
   return (
-    <div className="request-create p-3.5 sm:p-6 md:p-8 max-w-[1600px] mx-auto space-y-4 sm:space-y-6">
+    <div data-editor-view={activeMobileTab} className="request-editor request-create p-3.5 sm:p-6 md:p-8 max-w-[1600px] mx-auto space-y-4 sm:space-y-6">
+      {draftDialog && <DraftConfirmDialog mode={draftDialog} onClose={() => setDraftDialog(null)} onConfirm={async () => {
+        if (draftDialog === 'reload') { reloadDraft(); return true; }
+        return await handleClear() ?? false;
+      }} />}
       {/* Top Header & Context */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[#E2E5E9]">
         <div>
@@ -335,7 +367,7 @@ export const CreateRequestView: React.FC = () => {
           <button
             type="button"
             disabled={submittingNow || draftSaving}
-            onClick={handleClear}
+            onClick={() => setDraftDialog('clear')}
             className="min-h-10 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-slate-700 transition-colors enabled:hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#365C78] disabled:opacity-60"
           >
             Clear Form
@@ -343,7 +375,7 @@ export const CreateRequestView: React.FC = () => {
 
           <button
             type="button"
-            disabled={submittingNow || pendingUploads > 0 || (combined && !signingWorkflow)}
+            disabled={submittingNow || pendingUploads > 0}
             onClick={handleTriggerSubmit}
             className="workspace-primary flex min-h-10 items-center gap-2 px-4 py-2 text-sm"
           >
@@ -353,39 +385,10 @@ export const CreateRequestView: React.FC = () => {
         </div>
       </div>
 
-      {combined && !signingWorkflow && <div role="status" className="no-print rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-        This company needs a signing route before you can submit.
-        {canAdministerWorkflows(currentUser) ? <button type="button" className="ml-2 font-semibold underline" onClick={() => setActiveView('workflow-settings')}>Open signing routes</button> : ' Ask a workflow administrator to set one up.'}
-      </div>}
-
-      {/* Mobile view toggle */}
-      <div className="no-print lg:hidden flex border-b border-[#E2E5E9] bg-white rounded-md p-1 gap-1">
-        <button
-          onClick={() => setActiveMobileTab('editor')}
-          aria-pressed={activeMobileTab === 'editor'}
-          className={`flex-1 py-1.5 text-xs font-semibold rounded ${
-            activeMobileTab === 'editor'
-              ? 'bg-[#365C78] text-white'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          Form Editor
-        </button>
-        <button
-          onClick={() => setActiveMobileTab('preview')}
-          aria-pressed={activeMobileTab === 'preview'}
-          className={`flex-1 py-1.5 text-xs font-semibold rounded ${
-            activeMobileTab === 'preview'
-              ? 'bg-[#365C78] text-white'
-              : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          Live A4 Preview
-        </button>
-      </div>
+      <EditorViewToggle value={activeMobileTab} onChange={setActiveMobileTab} />
 
       {/* Alerts */}
-      {draftSaveError && <div role="alert" className="p-3 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-800 space-y-2"><p>{draftSaveError}</p><button disabled={draftSaving} className="underline mr-3" onClick={retrySave}>Retry draft save</button>{connected && <button className="underline" onClick={() => { if (confirm('Load the server draft and replace the entries shown here?')) reloadDraft(); }}>Load saved draft</button>}</div>}
+      {draftSaveError && <div role="alert" className="p-3 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-800 space-y-2"><p>{draftSaveError}</p><button disabled={draftSaving} className="underline mr-3" onClick={retrySave}>Retry draft save</button>{connected && <button className="underline" onClick={() => setDraftDialog('reload')}>Load saved draft</button>}</div>}
       {validationError && (
         <div className="p-3 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-800 flex items-center gap-2">
           <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
@@ -400,7 +403,7 @@ export const CreateRequestView: React.FC = () => {
         </div>
       )}
 
-      {combined ? <SignerChoices form="Administrative & Payment Request" workflow={signingWorkflow} users={users} requester={currentUser} value={choices} onChange={setChoices} /> : <section className="no-print rounded-lg border border-slate-200 bg-white p-4 text-sm" aria-label="PreciRoute signers">
+      {!combined && <section className="no-print rounded-lg border border-slate-200 bg-white p-4 text-sm" aria-label="PreciRoute signers">
         <h2 className="font-bold text-[#192B3C]">Review signers</h2>
         <ol className="mt-2 space-y-2">
           <li><strong>{currentUser.name}</strong> · Requester (you)</li>
@@ -412,12 +415,10 @@ export const CreateRequestView: React.FC = () => {
         <p className="mt-2 text-xs text-slate-600">{signingSteps.length ? 'You sign as requester when you send.' : 'No approval route is configured for this company.'}</p>
       </section>}
       {/* Split-Screen: Left Editor (50%) + Right Live A4 Preview (50%) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="editor-columns items-start">
         {/* Left Column: Focused Form Editor */}
         <fieldset disabled={submittingNow}
-          className={`workspace-panel no-print lg:col-span-6 space-y-6 p-4 sm:p-6 ${
-            activeMobileTab === 'preview' ? 'hidden lg:block' : 'block'
-          }`}
+          className="editor-fields workspace-panel no-print space-y-6 p-4 sm:p-6"
         >
           {/* Section 1: Entity & Requester Details */}
           <div className="space-y-4">
@@ -430,35 +431,35 @@ export const CreateRequestView: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Date */}
               <div className="space-y-1">
-                <label htmlFor="request-date" className="text-sm font-semibold text-slate-700 flex items-center gap-1">
+                <label htmlFor={combined ? validation.props("date").id : "request-date"} className="text-sm font-semibold text-slate-700 flex items-center gap-1">
                   <span>Date of Request</span>
                   <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative">
                   <Calendar className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    id="request-date"
+                  <EditorInput
+                    id="request-date" {...(combined ? validation.props("date") : {})}
                     type="text"
                     value={dateOfRequest}
                     onChange={(e) => setDateOfRequest(e.target.value)}
                     className="workspace-control min-h-10 w-full pl-9 pr-3 text-sm"
-                  />
+                  />{combined && validation.message("date")}
                 </div>
               </div>
 
               {/* Department */}
               <div className="space-y-1">
-                <label htmlFor="request-department" className="text-sm font-semibold text-slate-700 flex items-center gap-1">
+                <label htmlFor={combined ? validation.props("department").id : "request-department"} className="text-sm font-semibold text-slate-700 flex items-center gap-1">
                   <span>Department</span>
                   <span className="text-rose-500">*</span>
                 </label>
-                <input
-                  id="request-department"
+                <EditorInput
+                  id="request-department" {...(combined ? validation.props("department") : {})}
                   type="text"
                   value={department}
                   onChange={(e) => setDepartment(e.target.value)}
                   className="workspace-control min-h-10 w-full px-3 text-sm"
-                />
+                />{combined && validation.message("department")}
               </div>
 
               {/* Requester (read-only) */}
@@ -468,11 +469,12 @@ export const CreateRequestView: React.FC = () => {
               </div>
 
               <div className="sm:col-span-2">
-                <RequestCompanyField form={formName} value={originatingCompanyId} onChange={!connected || selectedScope === 'PEG' ? next => {
+                <RequestCompanyField fieldProps={combined ? validation.props("company") : undefined} form={formName} value={originatingCompanyId} onChange={!connected || selectedScope === 'PEG' ? next => {
                   setChoices({});
                   if (connected && !combined) selectDraftCompany(next);
                   else setOriginatingCompanyId(next);
                 } : undefined} />
+                {combined && validation.message("company")}
               </div>
             </div>
           </div>
@@ -485,7 +487,7 @@ export const CreateRequestView: React.FC = () => {
               </h2>
             </div>
 
-            <div role="group" aria-labelledby="request-priority" className="grid grid-cols-3 gap-2">
+            <div role="group" tabIndex={-1} aria-labelledby="request-priority" {...(combined ? validation.props("priority") : {})} className="grid grid-cols-3 gap-2">
               {(['Urgent', 'Medium', 'Low'] as PriorityLevel[]).map((level) => {
                 const isSelected = priority === level;
                 return (
@@ -507,51 +509,53 @@ export const CreateRequestView: React.FC = () => {
             </div>
           </div>
 
+          {validation.message("priority")}
+
           {/* Section 3: Work Description */}
           <div className="space-y-2">
             <div className="pb-2 border-b border-[#E2E5E9] flex items-center justify-between">
-              <label htmlFor="request-work-description" className="text-sm font-semibold text-workspace-ink">Work description</label>
+              <label htmlFor={combined ? validation.props("description").id : "request-work-description"} className="text-sm font-semibold text-workspace-ink">Work description</label>
             </div>
 
-            <textarea
-              id="request-work-description"
+            <EditorTextarea
+              id="request-work-description" {...(combined ? validation.props("description") : {})}
               rows={4}
               value={workDescription}
               onChange={(e) => setWorkDescription(e.target.value)}
               placeholder="Describe the work you’re requesting."
               className="workspace-control w-full px-3 py-2 text-sm leading-relaxed"
-            />
+            />{combined && validation.message("description")}
           </div>
 
           {combined && <section className="space-y-3 border-t border-slate-200 pt-4 text-sm">
             <label className="block font-semibold">Documents
-              <textarea className="workspace-control mt-1 block w-full p-2 font-normal" placeholder="List the supporting documents, if any." maxLength={1000} value={documentDescription} onChange={event => setDocumentDescription(event.target.value)} />
+              <EditorTextarea className="workspace-control mt-1 block w-full p-2 font-normal" placeholder="List the supporting documents, if any." maxLength={1000} value={documentDescription} onChange={event => setDocumentDescription(event.target.value)} />
             </label>
-            <label className="flex items-center gap-2">
+            <label className="editor-option">
               <input type="checkbox" checked={!!payment} onChange={event => setPayment(event.target.checked ? { amount: '', transferMode: 'Bank', purpose: 'Government Payment' } : undefined)} />
               Company payment required
             </label>
-            {payment && <>
+            {payment && <div data-slot="payment-fields" className="space-y-3 p-3">
               <label className="block">Amount (SAR)
-                <input inputMode="decimal" className="mt-1 block w-full rounded border p-2" value={payment.amount} onChange={event => setPayment({ ...payment, amount: event.target.value })} />
+                <EditorInput inputMode="decimal" className="mt-1 block w-full rounded border p-2" {...(combined ? validation.props("amount") : {})} value={payment.amount} onChange={event => setPayment({ ...payment, amount: event.target.value })} />{combined && validation.message("amount")}
               </label>
               <label className="block">Mode of transfer
-                <select className="mt-1 block w-full rounded border p-2" value={payment.transferMode} onChange={event => setPayment({ ...payment, transferMode: event.target.value as typeof payment.transferMode })}>
+                <EditorSelect className="mt-1 block w-full rounded border p-2" value={payment.transferMode} onChange={event => setPayment({ ...payment, transferMode: event.target.value as typeof payment.transferMode })}>
                   <option>Bank</option><option>Cash</option><option>Cheque</option>
-                </select>
+                </EditorSelect>
               </label>
               <label className="block">Transfer details (optional)
-                <input className="mt-1 block w-full rounded border p-2" maxLength={200} value={payment.transferDetails ?? ''} onChange={event => setPayment({ ...payment, transferDetails: event.target.value || undefined })} />
+                <EditorInput className="mt-1 block w-full rounded border p-2" maxLength={200} value={payment.transferDetails ?? ''} onChange={event => setPayment({ ...payment, transferDetails: event.target.value || undefined })} />
               </label>
               <label className="block">Purpose
-                <select className="mt-1 block w-full rounded border p-2" value={payment.purpose} onChange={event => setPayment({ ...payment, purpose: event.target.value as typeof payment.purpose })}>
+                <EditorSelect className="mt-1 block w-full rounded border p-2" value={payment.purpose} onChange={event => setPayment({ ...payment, purpose: event.target.value as typeof payment.purpose })}>
                   <option>Government Payment</option><option>Advance Cash</option><option>Other</option>
-                </select>
+                </EditorSelect>
               </label>
               {payment.purpose === 'Other' && <label className="block">Other purpose
-                <input className="mt-1 block w-full rounded border p-2" maxLength={500} value={payment.otherPurpose ?? ''} onChange={event => setPayment({ ...payment, otherPurpose: event.target.value })} />
+                <EditorInput className="mt-1 block w-full rounded border p-2" maxLength={500} {...(combined ? validation.props("other") : {})} value={payment.otherPurpose ?? ''} onChange={event => setPayment({ ...payment, otherPurpose: event.target.value })} />{combined && validation.message("other")}
               </label>}
-            </>}
+            </div>}
           </section>}
           {/* Section 4: Required Documents Checklist (9 Items) */}
           {!combined && <div className="space-y-3">
@@ -602,7 +606,7 @@ export const CreateRequestView: React.FC = () => {
                 />
               </label>
               {documents.others && (
-                <input
+                <EditorInput
                   type="text"
                   placeholder="Specify other required documentation or letters..."
                   value={documents.othersDescription}
@@ -616,63 +620,17 @@ export const CreateRequestView: React.FC = () => {
           </div>
 
           }
-          {/* Section 5: Supporting Attachments */}
-          <div className="space-y-3">
-            <div className="pb-2 border-b border-[#E2E5E9] flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-workspace-ink">
-                Attachments ({attachments.length})
-              </h2>
-            </div>
-
-            <div className="border border-dashed border-[#CBD5E1] rounded-md p-4 text-center hover:bg-[#F9FAFB] transition-colors">
-              <input
-                type="file"
-                multiple
-                onChange={handleFileUpload}
-                className="hidden"
-                id="file-upload-input"
-              />
-              <label htmlFor="file-upload-input" className="cursor-pointer space-y-1 block">
-                <Upload className="w-5 h-5 mx-auto text-[#365C78]" />
-                <span className="text-xs font-semibold text-[#365C78] hover:underline block">
-                  Click to upload attachments
-                </span>
-                <span className="text-[10px] text-slate-400 block">PDF, PNG, JPG</span>
-              </label>
-            </div>
-
-            {attachments.length > 0 && (
-              <div className="space-y-1.5">
-                {attachments.map((att) => (
-                  <div
-                    key={att.id}
-                    className="flex items-center justify-between p-2 rounded bg-[#F5F6F8] border border-[#E2E5E9] text-xs"
-                  >
-                    <div className="flex items-center gap-2 truncate">
-                      <Paperclip className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                      <span className="font-medium text-[#192B3C] truncate">{att.name}</span>
-                      <span className="text-[10px] text-slate-400">({att.sizeFormatted})</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveAttachment(att.id)}
-                      className="text-slate-400 hover:text-rose-600 transition-colors p-1"
-                      title="Remove attachment"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <SupportingFiles title="Attachments" files={attachments} maxFiles={20} busy={pendingUploads > 0}
+            error={attachmentError} onSelect={handleFileUpload} onRemove={index => {
+              handleRemoveAttachment(attachments[index].id);
+              setAttachmentError('');
+            }} />
+          {combined && <SignerChoices form="Administrative & Payment Request" workflow={signingWorkflow} companySelected={canStartSelectedCompany} users={users} requester={currentUser} value={choices} onChange={setChoices} />}
         </fieldset>
 
         {/* Right Column: Live A4 Document Preview */}
         <div
-          className={`lg:col-span-6 space-y-3 ${
-            activeMobileTab === 'editor' ? 'hidden lg:block' : 'block'
-          }`}
+          className="editor-preview space-y-3"
         >
           {/* Document Preview Toolbar */}
           <div className="workspace-panel no-print sticky top-16 z-10 flex items-center justify-between px-3 py-2">
@@ -739,7 +697,7 @@ export const CreateRequestView: React.FC = () => {
               }}
               className="w-full flex justify-center"
             >
-              {combined ? <AdministrativePaymentDocument data={previewData} /> : <AdminWorkRequestDocument data={previewData} isPrintMode={false} />}
+              {combined ? <AdministrativePaymentDocument data={{ ...previewData, priority }} /> : <AdminWorkRequestDocument data={previewData} isPrintMode={false} />}
             </div>
           </div>
         </div>

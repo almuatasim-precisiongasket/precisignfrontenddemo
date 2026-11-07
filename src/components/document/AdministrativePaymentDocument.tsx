@@ -16,7 +16,7 @@ function Label({ english, arabic }: { english: string; arabic: string }) {
   return <div className="admin-payment-label">{english}<span lang="ar" dir="rtl">{arabic}</span></div>;
 }
 
-export function AdministrativePaymentDocument({ data }: { data: AdminWorkFormData }) {
+export function AdministrativePaymentDocument({ data }: { data: Omit<AdminWorkFormData, 'priority'> & { priority?: AdminWorkFormData['priority'] } }) {
   const details = data.administrativePayment;
   const payment = details?.payment;
   const signatures = [

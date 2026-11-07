@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { canAdministerWorkflows } from '../../utils/workflowAdministration';
-import { canCompleteWithOutstandingSteps, configuredReplacementIds, usesConfiguredBackups } from '../../utils/routeReplacement';
+import { canCompleteWithOutstandingSteps, canProposeFinalReplacement, configuredReplacementIds, usesConfiguredBackups } from '../../utils/routeReplacement';
 import { canUserAccessCompany } from '../../utils/companyAccess';
 import { needsProcessingAction } from '../../utils/routeProcessing';
 import { useApp } from '../../context/AppContext';
@@ -11,6 +11,8 @@ import { FinanceHoldPanel } from './FinanceHoldPanel';
 import { FinancialCorrectionFields } from './FinancialCorrectionFields';
 import { SignatureModal } from '../modals/SignatureModal';
 import { DocuSignProgressBanner } from './DocuSignProgressBanner';
+import { canOfferEarlyCompletion, outstandingSigners } from '../journey/RouteProgress';
+import { WorkspaceDialog } from '../common/WorkspaceDialog';
 import { ApprovalJourneyPanel } from '../journey/ApprovalJourneyPanel';
 import {
   FileText,
@@ -77,7 +79,9 @@ export const ReviewSignView: React.FC = () => {
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const savingReason = useRef(false);
   const signingRecordTime = useRef<string | null>(null);
-  const [activeSidebarTab, setActiveSidebarTab] = useState<'actions' | 'timeline' | 'attachments'>('actions');
+  const actionsRef = useRef<HTMLDivElement>(null);
+  const replacementRef = useRef<HTMLDivElement>(null);
+  const completionRecordTime = useRef<string | null>(null);
   const [mobileViewTab, setMobileViewTab] = useState<'document' | 'sidebar'>(() => {
     const canCorrect = request?.status === 'Returned for Correction' && request.requesterId === currentUser.id;
     const canRespond = request?.status === 'Pending Approval' && request.pendingReplacement?.newUserId === currentUser.id;
@@ -132,12 +136,11 @@ export const ReviewSignView: React.FC = () => {
   const isAssignedApprover =
     request.status === 'Pending Approval' && currentStep?.assignedUserId === currentUser.id;
   const isRequester = request.requesterId === currentUser.id;
-  const isDirector = currentUser.role === 'Director';
   const isFinalApprover = request.approvalSteps.at(-1)?.assignedUserId === currentUser.id;
   const finalAlreadySigned = request.approvalSteps.at(-1)?.status === 'Approved';
   const isReturned = request.status === 'Returned for Correction';
   const canSign = request.status === 'Pending Approval' && !isRequester && (isAssignedApprover || (isFinalApprover && !finalAlreadySigned));
-  const configuredBackups = usesConfiguredBackups(request);
+  const configuredBackups = usesConfiguredBackups(request) && request.workflowConfig.signerSelection !== 'company-directory';
   const replacementCandidates = replacementStage ? users.filter(user =>
     user.id !== request.requesterId && canUserAccessCompany(user, request.companyId) &&
     !request.approvalSteps.some(step => step.assignedUserId === user.id) &&
@@ -145,10 +148,30 @@ export const ReviewSignView: React.FC = () => {
   ) : [];
   const replaceableSteps = request.approvalSteps.filter((step, index) =>
     !['Approved', 'Bypassed', 'Rejected'].includes(step.status) &&
-    (index !== request.approvalSteps.length - 1 || currentUser.canReplaceFinalApprover)
+    (index === request.approvalSteps.length - 1 ? canProposeFinalReplacement(request, currentUser) : canAdministerWorkflows(currentUser))
   );
-  const canOverride = request.status === 'Pending Approval' && isFinalApprover && !isRequester
+  const onLatestVersion = selectedVersion === request.documentVersion;
+  const outstanding = outstandingSigners(request);
+  const canOverride = canOfferEarlyCompletion(request, currentUser.id);
+  const canManageAfterSigning = finalAlreadySigned && !isRequester && request.status === 'Pending Approval'
     && canCompleteWithOutstandingSteps(request, currentUser.id);
+  const canRespond = request.status === 'Pending Approval' && request.pendingReplacement?.newUserId === currentUser.id;
+  const canCorrect = isReturned && isRequester;
+  const actionLabel = canRespond ? 'Respond to assignment' : canCorrect ? 'Review corrections'
+    : canSign ? 'Go to signing' : canOverride ? 'Review completion' : undefined;
+  const completionLabel = finalAlreadySigned ? 'Complete request' : 'Sign & complete';
+
+  function goToActions() {
+    setMobileViewTab('sidebar');
+    requestAnimationFrame(() => (canRespond && onLatestVersion ? replacementRef : actionsRef).current?.focus());
+  }
+
+  function openAction(mode: NonNullable<typeof actionModal>) {
+    setActionError(null);
+    setActionReason('');
+    if (mode === 'override') completionRecordTime.current = request?.updatedAt ?? null;
+    setActionModal(mode);
+  }
 
   const handleCopyId = () => {
     navigator.clipboard?.writeText(request.id);
@@ -201,7 +224,7 @@ export const ReviewSignView: React.FC = () => {
 
   const handleApproveClick = () => {
     setActionError(null);
-    if (!canSign) {
+    if (!canSign || !onLatestVersion) {
       setActionError(`Unauthorized: Stage is assigned to ${currentStep?.assignedUserName}.`);
       return;
     }
@@ -212,7 +235,7 @@ export const ReviewSignView: React.FC = () => {
   const handleConfirmedApproval = async (signatureDataUrl: string, note?: string) => {
     const result = await approveRequest(request.id, note, signatureDataUrl);
     if (result.success) {
-      setActionSuccess('Request stage approved and signature recorded.');
+      setActionSuccess(isFinalApprover && outstanding.length ? 'You signed. The request stays open for the other signers.' : 'Signature saved.');
       setTimeout(() => setActionSuccess(null), 3500);
     } else {
       setActionError(result.error || 'Failed to approve request');
@@ -343,31 +366,31 @@ export const ReviewSignView: React.FC = () => {
         </div>
 
         {/* Mobile Tab Switcher */}
-        <div className="lg:hidden flex border border-[#E2E5E9] bg-white rounded-md p-0.5 text-xs w-full sm:w-auto">
+        <div role="group" aria-label="Review view" className="lg:hidden flex border border-[#E2E5E9] bg-white rounded-md p-0.5 text-xs w-full sm:w-auto">
           <button
             onClick={() => setMobileViewTab('document')}
             aria-pressed={mobileViewTab === 'document'}
-            className={`flex-1 sm:flex-none px-3 py-1.5 font-semibold rounded transition-colors ${
+            className={`min-h-10 flex-1 sm:flex-none px-3 py-1.5 font-semibold rounded transition-colors ${
               mobileViewTab === 'document' ? 'bg-[#365C78] text-white shadow-xs' : 'text-slate-600'
             }`}
           >
-            Document View
+            Document
           </button>
           <button
             onClick={() => setMobileViewTab('sidebar')}
             aria-pressed={mobileViewTab === 'sidebar'}
-            className={`flex-1 sm:flex-none px-3 py-1.5 font-semibold rounded transition-colors ${
+            className={`min-h-10 flex-1 sm:flex-none px-3 py-1.5 font-semibold rounded transition-colors ${
               mobileViewTab === 'sidebar' ? 'bg-[#365C78] text-white shadow-xs' : 'text-slate-600'
             }`}
           >
-            Approval Controls
+            Actions & history
           </button>
         </div>
       </div>
 
       {/* Notifications / Alerts */}
       {actionError && !actionModal && (
-        <div className="no-print p-3 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-800 flex items-center justify-between">
+        <div role="alert" className="no-print p-3 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
             <span>{actionError}</span>
@@ -379,7 +402,7 @@ export const ReviewSignView: React.FC = () => {
       )}
 
       {actionSuccess && (
-        <div className="no-print p-3 bg-emerald-50 border border-emerald-200 rounded-md text-xs text-emerald-800 flex items-center justify-between">
+        <div role="status" className="no-print p-3 bg-emerald-50 border border-emerald-200 rounded-md text-xs text-emerald-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
             <span>{actionSuccess}</span>
@@ -395,8 +418,8 @@ export const ReviewSignView: React.FC = () => {
         <DocuSignProgressBanner
           request={request}
           currentUserId={currentUser.id}
-          isAssignedApprover={canSign}
-          onSignClick={handleApproveClick}
+          actionLabel={actionLabel}
+          onAction={goToActions}
         />
       </div>
 
@@ -406,7 +429,7 @@ export const ReviewSignView: React.FC = () => {
         <p className="mt-2 whitespace-pre-wrap break-words text-sm text-slate-800">{submissionNote}</p>
       </section>}
 
-      {/* Split Layout: 62% Document Focus + 38% Approval Controls on Desktop */}
+      {/* Split Layout: 62% Document Focus + 38% Actions & history on Desktop */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* ================= LEFT: ORIGINAL A4 DOCUMENT (62%) ================= */}
         <div
@@ -531,121 +554,41 @@ export const ReviewSignView: React.FC = () => {
           <RouteProcessingPanel key={request.id} request={request} />
           <FinanceHoldPanel key={`finance-${request.id}`} request={request} />
           {!!request.omittedSigningSteps?.length && <p className="rounded border bg-white p-3 text-xs">Signatures not requested: {request.omittedSigningSteps.join(', ')}</p>}
-          {/* 1. Primary Approval Action Box */}
-          <div className="workspace-panel space-y-4 p-5">
-            <div className="flex items-center justify-between border-b border-[#E2E5E9] pb-3">
-              <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[#192B3C]">
-                  Workflow Action
-                </h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Current Stage: <span className="font-semibold text-slate-800">{currentStep?.stageName || 'Completed'}</span>
-                </p>
+          <div ref={actionsRef} tabIndex={-1} className="workspace-panel scroll-mt-24 space-y-3 p-4">
+            <h3 className="text-sm font-bold">Request actions</h3>
+            {!onLatestVersion ? <div className="space-y-2 text-xs text-workspace-muted">
+              <p>You’re viewing version {selectedVersion}. Open the latest version to act on this request.</p>
+              <button type="button" className="workspace-control min-h-10 px-3 font-semibold" onClick={() => {
+                setSelectedVersion(request.documentVersion);
+                setMobileViewTab('document');
+              }}>Open latest version</button>
+            </div> : isReturned ? <div className="space-y-2 text-sm">
+              <p className="font-semibold text-amber-900">Corrections requested</p>
+              <p className="whitespace-pre-wrap text-xs text-workspace-muted">{[...request.approvalHistory].reverse().find(event => event.action === 'Returned for Correction')?.comments || 'The signer requested changes.'}</p>
+              {isRequester && <button type="button" className="workspace-primary min-h-10 px-3 text-xs" onClick={() => openAction('resubmit')}>Edit &amp; resend</button>}
+            </div> : (canSign || canOverride || canManageAfterSigning) ? <div className="space-y-3">
+              {isFinalApprover && outstanding.length > 0 && <p className="text-xs leading-relaxed text-workspace-muted">
+                {finalAlreadySigned ? 'Your signature is saved. The other signers can still sign.'
+                  : 'You can sign now. The request stays open for the other signers.'}
+                {canOverride && ' To finish early, give a reason for bypassing their signatures.'}
+              </p>}
+              {canSign && <button type="button" onClick={handleApproveClick} className="workspace-primary flex min-h-10 w-full items-center justify-center gap-2 px-3 text-xs">
+                <Check aria-hidden="true" className="size-4" />{canOverride ? 'Sign and keep open' : 'Sign'}
+              </button>}
+              {canOverride && <button type="button" onClick={() => openAction('override')} className={`${finalAlreadySigned ? 'workspace-primary' : 'workspace-control'} min-h-10 w-full px-3 text-xs font-semibold`}>{completionLabel}</button>}
+              <div className="flex flex-wrap gap-2">
+                {(isFinalApprover || request.workflowConfig.stages[request.currentStageIndex]?.canReturnForCorrection) &&
+                  <button type="button" className="workspace-control min-h-10 px-3 text-xs font-semibold" onClick={() => openAction('return')}>Request corrections</button>}
+                {(isFinalApprover || request.workflowConfig.stages[request.currentStageIndex]?.canReject) &&
+                  <button type="button" className="workspace-control min-h-10 px-3 text-xs font-semibold text-rose-800" onClick={() => openAction('reject')}>Reject request</button>}
               </div>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-700">
-                Stage {request.currentStageIndex + 1} of {request.approvalSteps.length}
-              </span>
-            </div>
-
-            {/* Authorization Scenarios */}
-            {request.status === 'Approved' ? (
-              <div className="p-3 bg-emerald-50 rounded-md border border-emerald-200 text-xs text-emerald-800 space-y-1">
-                <div className="flex items-center gap-1.5 font-bold">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>Document Fully Approved &amp; Archived</span>
-                </div>
-                <p className="text-[11px] leading-relaxed">
-                  The request has completed its approval workflow.
-                </p>
-              </div>
-            ) : request.status === 'Cancelled' ? (<div className="p-3 border rounded text-xs">PreciRoute cancelled. No further signing is allowed.</div>) : request.status === 'Rejected' ? (
-              <div className="p-3 bg-rose-50 rounded-md border border-rose-200 text-xs text-rose-800 space-y-1">
-                <div className="flex items-center gap-1.5 font-bold">
-                  <XCircle className="w-4 h-4 text-rose-600" />
-                  <span>Request Formally Rejected</span>
-                </div>
-                <p className="text-[11px] leading-relaxed">
-                  This document has been rejected and closed in the workflow register.
-                </p>
-              </div>
-            ) : isReturned ? (
-              <div className="p-3.5 bg-amber-50 rounded-md border border-amber-200 text-xs text-amber-900 space-y-3">
-                <div className="flex items-center gap-1.5 font-bold">
-                  <RotateCcw className="w-4 h-4 text-amber-600" />
-                  <span>Returned for Requester Correction</span>
-                </div>
-                <p className="text-[11px] leading-relaxed">
-                  {[...request.approvalHistory].reverse().find((h) => h.action === 'Returned for Correction')?.comments
-                    ? `Feedback: "${[...request.approvalHistory].reverse().find((h) => h.action === 'Returned for Correction')?.comments}"`
-                    : 'The approver requested corrections on this document.'}
-                </p>
-                {isRequester ? (
-                  <button
-                    onClick={() => {
-                      setActionModal('resubmit');
-                    }}
-                    className="workspace-primary min-h-10 w-full px-3 py-2 text-xs"
-                  >
-                    Edit &amp; Resubmit Corrected Document
-                  </button>
-                ) : (
-                  <div className="text-[10px] text-amber-700 italic">
-                    Awaiting resubmission by original requester ({request.requesterName}).
-                  </div>
-                )}
-              </div>
-            ) : (canSign || canOverride) ? (
-              /* ACTIVE ASSIGNED APPROVER ACTIONS */
-              <div className="space-y-3">
-                <div className="space-y-2 pt-1">
-                  {/* Approve & Sign Button */}
-                  <button
-                    onClick={handleApproveClick}
-                    disabled={!canSign}
-                    className="workspace-primary flex min-h-10 w-full items-center justify-center gap-2 px-4 text-xs"
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>Sign</span>
-                  </button>
-
-                  {canOverride && <button onClick={() => setActionModal('override')} className="workspace-control min-h-10 w-full px-3 text-xs font-semibold">{finalAlreadySigned ? 'Complete Route' : 'Sign & Complete'}</button>}
-                  <div className="grid grid-cols-2 gap-2">
-                    {/* Return for Correction Button */}
-                    <button
-                      onClick={() => { setActionError(null); setActionReason(''); setActionModal('return'); }}
-                      disabled={!isFinalApprover && !request.workflowConfig.stages[request.currentStageIndex]?.canReturnForCorrection}
-                      className="py-2 px-3 border border-amber-300 bg-amber-50/60 hover:bg-amber-100/60 text-amber-800 rounded-md text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span>Return</span>
-                    </button>
-
-                    {/* Reject Button */}
-                    <button
-                      onClick={() => setActionModal('reject')}
-                      disabled={!isFinalApprover && !request.workflowConfig.stages[request.currentStageIndex]?.canReject}
-                      className="py-2 px-3 border border-rose-300 bg-rose-50/60 hover:bg-rose-100/60 text-rose-800 rounded-md text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
-                    >
-                      <XCircle className="w-3.5 h-3.5" />
-                      <span>Reject</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              /* READ-ONLY / UNAUTHORIZED SCENARIO */
-              <div className="p-3 bg-slate-50 rounded-md border border-[#E2E5E9] text-xs text-slate-600 space-y-1">
-                <div className="font-semibold text-slate-800">Read-Only Mode</div>
-                <p className="text-[11px] leading-relaxed">
-                  Stage {request.currentStageIndex + 1} is assigned to{' '}
-                  <strong className="text-slate-900">{currentStep?.assignedUserName}</strong> ({currentStep?.assignedRole}).
-                  Only the assigned approver may approve this stage. The assigned final approver may sign early or complete this route.
-                </p>
-              </div>
-            )}
+            </div> : <p className="text-xs text-workspace-muted">{request.status === 'Approved' ? 'Signing is complete.'
+              : request.status === 'Cancelled' ? 'This request was cancelled.'
+              : request.status === 'Rejected' ? 'This request was rejected.'
+              : currentStep?.assignedUserName ? `Waiting for ${currentStep.assignedUserName} to sign.` : 'No signing action is available to you.'}</p>}
           </div>
 
-          {isRequester && ['Pending Approval','Returned for Correction'].includes(request.status) && <button className="w-full py-2 border rounded text-xs" onClick={() => setActionModal('cancel')}>Cancel PreciRoute</button>}
+          {isRequester && onLatestVersion && ['Pending Approval','Returned for Correction'].includes(request.status) && <button type="button" className="workspace-control min-h-10 px-3 text-xs" onClick={() => openAction('cancel')}>Cancel request</button>}
           {request.status === 'Approved' && <button className="w-full py-2 border rounded text-xs" onClick={async () => {
             let latest; try { latest = await readLatestRoute(request.id); } catch { setActionError('Could not verify access to the route summary.'); return; }
             if (!latest || latest.status !== 'Approved') { setActionError('Completed route unavailable.'); return; }
@@ -654,21 +597,61 @@ export const ReviewSignView: React.FC = () => {
             const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' }));
             const link = document.createElement('a'); link.href = url; link.download = `${record.id}-route-summary.txt`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
           }}>Download Route Summary</button>}
-          {request.status === 'Pending Approval' && request.pendingReplacement?.newUserId === currentUser.id && <div className="workspace-panel space-y-3 p-4 text-sm">
-            <p>You are proposed as final approver. Accepting transfers final signing and early-completion authority to you.</p>
-            {[true,false].map(accept => <button key={String(accept)} disabled={saving} className="p-2 border rounded mr-2" onClick={async () => { setSaving(true); const result = await acceptReplacement(request.id,accept); setSaving(false); if (!result.success) setActionError(result.error || 'Could not respond.'); }}>{accept ? 'Accept Assignment' : 'Decline'}</button>)}
+          {canRespond && onLatestVersion && <div ref={replacementRef} tabIndex={-1} className="workspace-panel scroll-mt-24 space-y-2 p-4 text-sm">
+            <h3 className="font-semibold">Final approver invitation</h3>
+            <p className="text-xs text-workspace-muted">Accept to take over signing and completion. The current approver stays assigned until you accept.</p>
+            <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-xs"><strong>Reason:</strong> {request.pendingReplacement?.reason}</p>
+            <div className="flex flex-wrap gap-2">
+              {[true, false].map(accept => <button key={String(accept)} type="button" disabled={saving} className={`${accept ? 'workspace-primary' : 'workspace-control'} min-h-10 px-3 text-xs font-semibold`} onClick={async () => {
+                setSaving(true);
+                setActionError(null);
+                const result = await acceptReplacement(request.id, accept);
+                setSaving(false);
+                if (result.success) setActionSuccess(accept ? 'You are now the final approver.' : 'Assignment declined.');
+                else setActionError(result.error || 'Could not respond to the assignment.');
+              }}>{accept ? 'Accept assignment' : 'Decline'}</button>)}
+            </div>
           </div>}
-          {request.status === 'Pending Approval' && (currentUser.canReplaceFinalApprover || (!configuredBackups && canAdministerWorkflows(currentUser))) && <div className="workspace-panel space-y-3 p-4 text-sm">
-            <h3 className="font-semibold">Replace an unsigned signer</h3>
-            {request.pendingReplacement ? <p>Final replacement awaiting acceptance. The original signer remains assigned.</p> : replaceableSteps.length === 0 ? <p className="text-workspace-muted">No unsigned stages are available to you. Replacing the final approver requires separate permission.</p> : <>
-              <p className="text-workspace-muted">{configuredBackups ? "Choose a configured backup or restore the primary signer. The change takes effect immediately." : "Intermediate replacements take effect immediately. A proposed final approver must accept before the assignment changes."}</p>
-              <label className="block">Signer to replace<select required className="workspace-control mt-1 block min-h-10 w-full px-2" value={replacementStage} onChange={e => { setReplacementStage(e.target.value); setReplacementUser(''); }}><option value="">Select stage</option>{replaceableSteps.map(step => <option key={step.stageId} value={step.stageId}>{step.stageName} — {step.assignedUserName}</option>)}</select></label>
-              <label className="block">{configuredBackups ? 'Backup or primary signer' : 'Proposed replacement'}<select required disabled={replacementCandidates.length === 0} className="workspace-control mt-1 block min-h-10 w-full px-2" value={replacementUser} onChange={e => setReplacementUser(e.target.value)}><option value="">Select user</option>{replacementCandidates.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
-              {replacementStage && replacementCandidates.length === 0 && <p role="status" className="text-workspace-muted">No eligible replacements are available for this signer.</p>}
-              <label className="block">Reason (required)<textarea required className="workspace-control mt-1 block w-full p-2" value={replacementReason} onChange={e => setReplacementReason(e.target.value)} /></label>
-              <button disabled={saving || !replacementStage || !replacementCandidates.some(user => user.id === replacementUser) || !replacementReason.trim()} className="workspace-control min-h-10 px-3 font-semibold" onClick={async () => { setSaving(true); const result = await replaceSigner(request.id,replacementStage,replacementUser,replacementReason); setSaving(false); if(result.success){ setReplacementReason(''); setReplacementStage(''); setReplacementUser(''); } else setActionError(result.error || 'Replacement failed.'); }}>{configuredBackups ? 'Activate signer' : 'Replace Signer'}</button>
-            </>}
-          </div>}
+          {onLatestVersion && request.status === 'Pending Approval' && (canProposeFinalReplacement(request, currentUser) || (!configuredBackups && canAdministerWorkflows(currentUser))) &&
+            <details className="workspace-panel p-4 text-sm">
+              <summary className="preci-link cursor-pointer font-semibold">Replace an unsigned signer</summary>
+              <div className="mt-3 space-y-3">
+                {request.pendingReplacement ? <p>Waiting for the proposed final approver to accept. The current approver is still assigned.</p>
+                : replaceableSteps.length === 0 ? <p className="text-workspace-muted">No unsigned steps are available to replace.</p> : <>
+                  <p className="text-xs text-workspace-muted">{configuredBackups
+                    ? 'Choose a saved backup or restore the primary signer. The assignment changes as soon as you save.'
+                    : 'Other replacements take effect immediately. A new final approver must accept first.'}</p>
+                  <label className="block">Signer to replace
+                    <select className="workspace-control mt-1 block min-h-10 w-full px-2" value={replacementStage} onChange={e => { setReplacementStage(e.target.value); setReplacementUser(''); }}>
+                      <option value="">Choose a signer</option>
+                      {replaceableSteps.map(step => <option key={step.stageId} value={step.stageId}>{step.assignedUserName} · {step.stageName}</option>)}
+                    </select>
+                  </label>
+                  <label className="block">{configuredBackups ? 'Backup or original signer' : 'Replacement'}
+                    <select disabled={replacementCandidates.length === 0} className="workspace-control mt-1 block min-h-10 w-full px-2" value={replacementUser} onChange={e => setReplacementUser(e.target.value)}>
+                      <option value="">Choose a replacement</option>
+                      {replacementCandidates.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
+                    </select>
+                  </label>
+                  {replacementStage && replacementCandidates.length === 0 && <p role="status" className="text-xs text-workspace-muted">No eligible replacements are available for this signer.</p>}
+                  <label className="block">Reason (required)
+                    <textarea className="workspace-control mt-1 block w-full p-2" value={replacementReason} onChange={e => setReplacementReason(e.target.value)} />
+                  </label>
+                  <button type="button" disabled={saving || !replacementCandidates.some(user => user.id === replacementUser) || !replacementReason.trim()}
+                    className="workspace-control min-h-10 px-3 font-semibold" onClick={async () => {
+                      setSaving(true);
+                      setActionError(null);
+                      const result = await replaceSigner(request.id, replacementStage, replacementUser, replacementReason);
+                      setSaving(false);
+                      if (!result.success) { setActionError(result.error || 'Replacement failed.'); return; }
+                      setReplacementReason('');
+                      setReplacementStage('');
+                      setReplacementUser('');
+                      setActionSuccess(configuredBackups ? 'Signer replaced. The change is in the request history.' : 'Replacement saved. Check the request history for its status.');
+                    }}>{configuredBackups ? 'Assign replacement' : 'Save replacement'}</button>
+                </>}
+              </div>
+            </details>}
           {/* 2. Detailed Approval Journey & Audit Log */}
           <ApprovalJourneyPanel
             request={request}
@@ -722,9 +705,9 @@ export const ReviewSignView: React.FC = () => {
 
       {/* Action Modal: Return for Correction */}
       {actionModal === 'return' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-lg border border-[#E2E5E9] shadow-xl max-w-md w-full p-6 space-y-4">
-            <h3 className="text-sm font-bold text-[#192B3C] flex items-center gap-2">
+        <WorkspaceDialog titleId="return-heading" busy={saving} onClose={() => setActionModal(null)} className="max-w-lg p-5">
+          <div className="w-full space-y-4">
+            <h3 id="return-heading" className="text-sm font-bold text-[#192B3C] flex items-center gap-2">
               <RotateCcw className="w-4 h-4 text-amber-600" />
               <span>Return Request for Correction</span>
             </h3>
@@ -733,6 +716,7 @@ export const ReviewSignView: React.FC = () => {
             </p>
             {actionError && <p id="return-error" role="alert" className="text-xs text-rose-700">{actionError}</p>}
             <textarea
+              data-dialog-focus
               aria-label="Reason for return"
               aria-invalid={Boolean(actionError)}
               aria-describedby={actionError ? "return-error" : undefined}
@@ -760,22 +744,27 @@ export const ReviewSignView: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </WorkspaceDialog>
       )}
 
       {/* Action Modal: Reject Request */}
       {(actionModal === 'reject' || actionModal === 'cancel') && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-lg border border-[#E2E5E9] shadow-xl max-w-md w-full p-6 space-y-4">
-            <h3 className="text-sm font-bold text-rose-700 flex items-center gap-2">
+        <WorkspaceDialog titleId="close-heading" busy={saving} onClose={() => setActionModal(null)} className="max-w-lg p-5">
+          <div className="w-full space-y-4">
+            <h3 id="close-heading" className="text-sm font-bold text-rose-700 flex items-center gap-2">
               <XCircle className="w-4 h-4 text-rose-600" />
-              <span>{actionModal === 'cancel' ? 'Cancel PreciRoute' : 'Reject Request Form'}</span>
+              <span>{actionModal === 'cancel' ? 'Cancel request' : 'Reject request'}</span>
             </h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Provide a reason. This action closes the PreciRoute and preserves its document and signing history:
+              The request will close and its signing history will be kept.
             </p>
-            {actionError && <p role="alert" className="text-xs text-rose-700">{actionError}</p>}
+            <label htmlFor="close-reason" className="block text-sm font-semibold">Reason (required)</label>
+            {actionError && <p id="close-error" role="alert" className="text-xs text-rose-700">{actionError}</p>}
             <textarea
+              id="close-reason"
+              data-dialog-focus
+              aria-invalid={!!actionError}
+              aria-describedby={actionError ? "close-error" : undefined}
               disabled={saving}
               rows={3}
               value={actionReason}
@@ -789,63 +778,62 @@ export const ReviewSignView: React.FC = () => {
                 onClick={() => setActionModal(null)}
                 className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded"
               >
-                Cancel
+                Go back
               </button>
               <button
                 disabled={saving}
                 onClick={handleRejectSubmit}
                 className="px-4 py-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded shadow-xs"
               >
-                {saving ? 'Saving…' : 'Confirm Rejection'}
+                {saving ? 'Saving…' : actionModal === 'cancel' ? 'Cancel request' : 'Reject request'}
               </button>
             </div>
           </div>
-        </div>
+        </WorkspaceDialog>
       )}
 
-      {/* Action Modal: Director Override */}
-      {actionModal === 'override' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-lg border border-[#E2E5E9] shadow-xl max-w-md w-full p-6 space-y-4">
-            <h3 className="text-sm font-bold text-[#192B3C] flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-[#365C78]" />
-              <span>Confirm PreciRoute Completion</span>
-            </h3>
-            <div className="p-3 bg-amber-50 rounded border border-amber-200 text-xs text-amber-900 leading-relaxed">
-              The route will close. Outstanding signers will be bypassed: {request.approvalSteps.slice(0, -1).filter(step => step.status !== 'Approved' && step.status !== 'Bypassed').map(step => step.assignedUserName).join(', ') || 'None'}.
-            </div>
-            {actionError && <p role="alert" className="text-xs text-rose-700">{actionError}</p>}
-            <textarea
-              disabled={saving}
-              rows={2}
-              value={actionReason}
-              onChange={(e) => setActionReason(e.target.value)}
-              placeholder="Reason for completing this route (required)..."
-              className="w-full px-3 py-2 text-xs border border-[#E2E5E9] rounded focus:outline-none focus:ring-1 focus:ring-[#365C78]"
-            />
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                disabled={saving}
-                onClick={() => setActionModal(null)}
-                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => { if (!actionReason.trim()) { setActionError('A reason is required to bypass outstanding signers.'); return; } if (finalAlreadySigned) { void handleDirectorOverrideSubmit(''); } else { setSignatureAction('override'); signingRecordTime.current = request.updatedAt; setSignatureModalOpen(true); } }}
-                className="px-4 py-1.5 text-xs font-semibold text-white bg-[#192B3C] hover:bg-[#12202D] rounded shadow-xs"
-              >
-                {finalAlreadySigned ? 'Complete Route' : 'Sign & Complete'}
-              </button>
+      {actionModal === 'override' && !signatureModalOpen && (
+        <WorkspaceDialog titleId="route-completion-title" busy={saving} onClose={() => setActionModal(null)} className="max-w-md p-5">
+          <div className="w-full space-y-3">
+            <h2 id="route-completion-title" className="text-base font-bold">{completionLabel}</h2>
+            <p className="text-sm text-workspace-muted">This finishes signing. The following signers will be recorded as bypassed:</p>
+            <ul className="list-disc space-y-1 rounded-lg border border-amber-200 bg-amber-50 py-2 pl-8 pr-3 text-sm text-amber-900">
+              {outstanding.map(step => <li key={step.stageId}>{step.assignedUserName} · {step.stageName}</li>)}
+            </ul>
+            <label htmlFor="route-completion-reason" className="block text-sm font-semibold">Reason for bypassing (required)</label>
+            <textarea id="route-completion-reason" data-dialog-focus disabled={saving} rows={3} value={actionReason}
+              aria-invalid={!!actionError} aria-describedby={actionError ? 'route-completion-error' : undefined}
+              onChange={event => setActionReason(event.target.value)} className="workspace-control w-full p-2 text-sm" />
+            {actionError && <p id="route-completion-error" role="alert" className="text-sm text-rose-700">{actionError}</p>}
+            <div className="flex flex-wrap justify-end gap-2">
+              <button type="button" disabled={saving} className="workspace-control min-h-10 px-3 text-sm" onClick={() => setActionModal(null)}>Cancel</button>
+              <button type="button" disabled={saving} className="workspace-primary min-h-10 px-3 text-sm" onClick={() => {
+                if (completionRecordTime.current !== request.updatedAt) {
+                  setActionError('The request changed. Close this dialog and review the latest request.');
+                  return;
+                }
+                if (!actionReason.trim()) {
+                  setActionError('Enter a reason before continuing.');
+                  document.getElementById('route-completion-reason')?.focus();
+                  return;
+                }
+                setActionError(null);
+                if (finalAlreadySigned) void handleDirectorOverrideSubmit('');
+                else {
+                  setSignatureAction('override');
+                  signingRecordTime.current = request.updatedAt;
+                  setSignatureModalOpen(true);
+                }
+              }}>{saving ? 'Saving…' : finalAlreadySigned ? 'Complete request' : 'Continue to signature'}</button>
             </div>
           </div>
-        </div>
+        </WorkspaceDialog>
       )}
 
       {/* Action Modal: Resubmit Request */}
       {actionModal === 'resubmit' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div role="dialog" aria-modal="true" aria-labelledby="correction-heading" className="max-h-[calc(100dvh-2rem)] overflow-y-auto bg-white rounded-lg border border-[#E2E5E9] shadow-xl max-w-lg w-full p-6 space-y-4">
+        <WorkspaceDialog titleId="correction-heading" busy={saving} onClose={() => setActionModal(null)} className="max-w-lg p-5">
+          <div className="w-full space-y-4">
             <div className="border-b border-[#E2E5E9] pb-3">
               <h3 id="correction-heading" className="text-base font-semibold text-[#192B3C]">
                 Revise &amp; Resubmit Request (Version {request.documentVersion + 1})
@@ -857,7 +845,7 @@ export const ReviewSignView: React.FC = () => {
 
             {actionError && <p role="alert" className="text-xs text-rose-700">{actionError}</p>}
             <div className="space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <label>Date of request
                   <input className="w-full px-3 py-1.5 border rounded" value={correctedForm.dateOfRequest} onChange={(e) => setCorrectedForm((prev) => ({ ...prev, dateOfRequest: e.target.value }))} />
                 </label>
@@ -971,7 +959,7 @@ export const ReviewSignView: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </WorkspaceDialog>
       )}
 
       {/* Signature Confirmation Modal */}
@@ -980,8 +968,8 @@ export const ReviewSignView: React.FC = () => {
           isOpen={signatureModalOpen}
           onClose={() => setSignatureModalOpen(false)}
           user={currentUser}
-          title={signatureAction === 'resubmit' ? 'Sign Corrected Document' : signatureAction === 'override' ? 'Sign & Complete PreciRoute' : 'Sign & Approve Document'}
-          confirmLabel="Apply Signature & Save"
+          title={signatureAction === 'resubmit' ? 'Sign corrected request' : signatureAction === 'override' ? 'Sign & complete' : 'Sign request'}
+          confirmLabel={signatureAction === 'override' ? 'Sign & complete' : 'Save signature'}
           noteLabel={signatureAction === 'approve' ? 'Signing remark' : undefined}
           onConfirm={(signature, note) => { if (signingRecordTime.current !== request.updatedAt) return Promise.resolve({ success: false, error: 'The route changed. Close this dialog and review the current document before signing again.' }); return signatureAction === 'resubmit' ? handleResubmitSubmit(signature) : signatureAction === 'override' ? handleDirectorOverrideSubmit(signature) : handleConfirmedApproval(signature, note); }}
         />

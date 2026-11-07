@@ -289,3 +289,118 @@
     }
   }
 }
+
+/* Workspace summaries and editor controls; paper documents retain their own rules. */
+.dashboard-workspace { container-type: inline-size; }
+.activity-choice { display:flex; align-items:center; gap:.65rem; width:100%; min-height:44px; padding:.5rem .75rem; border-radius:.5rem; font-size:.8rem; }
+.activity-choice:hover, .activity-choice[aria-pressed="true"] { background:#edf7f6; }
+.activity-choice:focus-visible, .editor-view-toggle button:focus-visible { outline:2px solid #365c78; outline-offset:2px; }
+.route-peek { padding:.75rem; border:1px solid #dce5eb; border-radius:.65rem; background:white; }
+.route-peek-signers { margin-block:.5rem; display:flex; flex-wrap:wrap; gap:.25rem 1.25rem; }
+.route-dot { width:8px; height:8px; border-radius:50%; background:#94a3b8; flex-shrink:0; }
+.route-dot-submitted,.route-dot-completed { background:#059669; }
+.route-dot-current { background:#087b79; }
+.route-dot-returned { background:#c56a10; }
+.request-cards { display:none; }
+.draft-confirm[open] { flex-direction:column; }
+.journey-dialog { width:min(44rem,calc(100% - 2rem)); max-height:90dvh; padding:0; }
+.editor-view-toggle { display:flex; gap:4px; padding:4px; border-radius:10px; background:white; border:1px solid #dce5eb; }
+.editor-view-toggle button { flex:1; min-height:44px; padding:.5rem; border-radius:7px; font-size:.8rem; }
+.editor-view-toggle button[aria-pressed="true"] { background:#12374d; color:white; }
+.editor-columns { display:grid; align-items:start; gap:1.25rem; min-width:0; }
+.request-editor { container-type:inline-size; }
+.editor-preview,.editor-fields { min-width:0; }
+@media screen {
+  @container (width < 65rem) { .request-table, .request-columns-control { display:none; } .request-cards { display:block; } }
+  @container (width < 46rem) {
+    [data-editor-view="editor"] .editor-preview, [data-editor-view="preview"] .editor-fields { display:none; }
+  }
+  @container (width >= 46rem) { .editor-columns { grid-template-columns:minmax(0,1fr) minmax(0,1.15fr); } .editor-view-toggle { display:none; } }
+}
+@media print { .editor-preview { display:block !important; } }
+
+/* shadcn/ui Field and Input patterns, scoped to the request editor. */
+@media screen {
+  .editor-fields {
+    border-radius: 1rem;
+    border-color: var(--color-workspace-line);
+    box-shadow: 0 1px 2px rgb(25 43 60 / 6%);
+  }
+
+  .editor-fields :is([data-slot="input"], [data-slot="textarea"], [data-slot="native-select"]) {
+    width: 100%;
+    min-width: 0;
+    min-height: 2.625rem;
+    border: 1px solid #b6c6d2;
+    border-radius: .5rem;
+    background: white;
+    color: var(--color-workspace-ink);
+    box-shadow: 0 1px 2px rgb(25 43 60 / 5%);
+  }
+
+  .editor-fields [data-slot="textarea"] {
+    min-height: 5rem;
+    resize: vertical;
+  }
+
+  .editor-fields [data-slot="input"][readonly] {
+    background: var(--color-workspace);
+  }
+
+  .editor-fields :is([data-slot="input"], [data-slot="textarea"], [data-slot="native-select"]):focus-visible {
+    border-color: var(--color-workspace-teal);
+    outline: 2px solid var(--color-workspace-teal);
+    outline-offset: 1px;
+  }
+
+  .editor-fields :is([data-slot="input"], [data-slot="textarea"], [data-slot="native-select"])[aria-invalid="true"] {
+    border-color: #be3454;
+  }
+
+  .editor-fields :is([data-slot="input"], [data-slot="textarea"], [data-slot="native-select"]):disabled {
+    background: var(--color-workspace);
+    cursor: not-allowed;
+  }
+
+  .editor-fields input:is([type="checkbox"], [type="radio"]) {
+    accent-color: var(--color-workspace-teal);
+  }
+
+  .editor-fields :is(.editor-option, [data-slot="payment-fields"], .editor-signer-panel) {
+    border: 1px solid var(--color-workspace-line);
+    border-radius: .75rem;
+    background: #f7fafb;
+  }
+
+  .editor-option {
+    display: flex;
+    align-items: center;
+    min-height: 2.625rem;
+    gap: .625rem;
+    padding: .625rem .75rem;
+  }
+
+  .editor-fields [aria-invalid="true"], .editor-fields #signer-review {
+    scroll-margin-top: 5rem;
+  }
+}
+
+/* Signing workspace controls. */
+.route-dialog[open] { display: block; overflow: auto; }
+.route-step-chip {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: .75rem;
+  position: relative;
+  padding: .2rem 0 1.1rem;
+  font-size: .875rem;
+}
+.route-step-chip:not(:last-child)::after { content: ''; position: absolute; left: .8rem; top: 2rem; bottom: 0; width: 2px; background: #b8d5d4; }
+.route-step-chip:last-child { padding-bottom: 0; }
+.route-step-number { flex: none; display: grid; place-items: center; width: 1.7rem; height: 1.7rem; border-radius: 50%; background: #086a70; color: white; font-size: .75rem; font-weight: 700; }
+.route-step-chip strong, .route-step-chip small { display: block; }
+.route-step-chip small { margin-top: .15rem; color: var(--color-workspace-muted); font-size: .75rem; }
+.route-peek-signers { display: block; margin-block: .875rem 0; }
+.route-dot-rejected { background: #be123c; }
+.route-dot-bypassed { background: transparent; border: 1px dashed #64748b; }

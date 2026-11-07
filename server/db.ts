@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 
-const schemaVersion = 8;
+const schemaVersion = 9;
 
 function readSchemaVersion(db: DatabaseSync) {
   const version = (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
@@ -75,6 +75,13 @@ function migrate(db: DatabaseSync, version: number) {
       company_id TEXT PRIMARY KEY REFERENCES companies(id),
       logo_data_url TEXT NOT NULL
     );`);
+  }
+  if (version < 9) {
+    db.exec(`ALTER TABLE account_access ADD COLUMN role_override TEXT CHECK(role_override = 'Employee');
+      DROP VIEW account_profiles;
+      CREATE VIEW account_profiles AS SELECT users.*, account_access.company_grants, account_access.form_grants,
+        account_access.is_super_admin, account_access.is_disabled, account_access.must_change_password, account_access.role_override
+        FROM users LEFT JOIN account_access ON account_access.user_id=users.id;`);
   }
   if (version < schemaVersion) db.exec(`PRAGMA user_version = ${schemaVersion};`);
 }

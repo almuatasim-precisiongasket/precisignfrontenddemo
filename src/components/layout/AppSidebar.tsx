@@ -25,7 +25,7 @@ import {
 import { PARENT_ORGANIZATION_ID, ViewingScope } from '../../types';
 import { BrandLockup } from './BrandLockup';
 import { AccountMenu } from './AccountMenu';
-import { canAdministerWorkflows } from '../../utils/workflowAdministration';
+import { canConfigureSigningRoutes } from '../../utils/workflowAdministration';
 
 export const AppSidebar: React.FC<{ canOpenDirectory?: boolean; onSignOut?: () => void; desktopHidden: boolean; onHideDesktop: () => void }> = ({ canOpenDirectory, onSignOut, desktopHidden, onHideDesktop }) => {
   const {
@@ -224,7 +224,7 @@ export const AppSidebar: React.FC<{ canOpenDirectory?: boolean; onSignOut?: () =
             </button>
 
             </>}
-            {(canOpenDirectory || !readOnly || (companies.length > 0 && canAdministerWorkflows(currentUser))) && <div className="mt-3 border-t border-white/12 pt-2">
+            {(canOpenDirectory || !readOnly || (companies.length > 0 && canConfigureSigningRoutes(currentUser))) && <div className="mt-3 border-t border-white/12 pt-2">
               <button
                 onClick={() => setAdminOpen(!adminOpen)}
                 aria-expanded={adminOpen}
@@ -238,7 +238,7 @@ export const AppSidebar: React.FC<{ canOpenDirectory?: boolean; onSignOut?: () =
 
               {adminOpen && (
                 <div className="mt-1 space-y-1">
-                  {(!readOnly || canAdministerWorkflows(currentUser)) && <button
+                  {(!readOnly || canConfigureSigningRoutes(currentUser)) && <button
                     onClick={() => handleNav('workflow-settings')}
                     aria-current={activeView === 'workflow-settings' ? 'page' : undefined}
                     className="preci-nav-item"

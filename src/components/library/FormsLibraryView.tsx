@@ -1,6 +1,7 @@
 import { ArrowRight, CreditCard, FileText, Monitor, Receipt, Sliders } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { canAdministerWorkflows } from '../../utils/workflowAdministration';
+import { canConfigureSigningRoutes } from '../../utils/workflowAdministration';
+import { signerOptions, isOptionalSigner } from '../../utils/signingSelection';
 import { canUserStartForm } from '../../utils/companyAccess';
 import { FinancialRequestView } from '../create/FinancialRequestView';
 import { ITRequestPreviewView } from '../create/ITRequestPreviewView';
@@ -36,7 +37,7 @@ type FormName = typeof companyForms[number]['name'];
 export type LibraryEditorForm = Exclude<FormName, 'Administrative & Payment Request'>;
 
 export function FormsLibraryView({ initialForm }: { initialForm?: LibraryEditorForm } = {}) {
-  const { setSelectedRequestFormType, setActiveView, selectedCompany, selectedScope, currentUser, workflows, companies, readOnly: connected } = useApp();
+  const { setSelectedRequestFormType, setActiveView, selectedCompany, selectedScope, currentUser, users, workflows, companies, readOnly: connected } = useApp();
   const openForm = initialForm;
   const scopedCompanies = companies.filter(company => selectedScope === 'PEG' || company.id === selectedScope);
   const visibleForms = companyForms.filter(form => !connected || scopedCompanies.some(company => canUserStartForm(currentUser, company.id, form.name)));
@@ -60,7 +61,7 @@ export function FormsLibraryView({ initialForm }: { initialForm?: LibraryEditorF
           <h1 className="text-2xl font-semibold tracking-tight text-workspace-ink sm:text-3xl">Forms Library</h1>
           <p className="mt-1 text-sm text-slate-600">{selectedScope === 'PEG' ? 'Group View · Choose a form, then select the legal company it belongs to.' : selectedCompany.fullName}</p>
         </div>
-        {(!connected || canAdministerWorkflows(currentUser)) && <button type="button" onClick={() => setActiveView('workflow-settings')} className="workspace-control inline-flex min-h-10 items-center gap-2 px-4 text-sm font-semibold">
+        {(!connected || canConfigureSigningRoutes(currentUser)) && <button type="button" onClick={() => setActiveView('workflow-settings')} className="workspace-control inline-flex min-h-10 items-center gap-2 px-4 text-sm font-semibold">
           <Sliders className="size-4" aria-hidden="true" /> Signing routes
         </button>}
       </header>
@@ -71,7 +72,8 @@ export function FormsLibraryView({ initialForm }: { initialForm?: LibraryEditorF
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {visibleForms.map(({ name, department, description, icon: Icon }) => {
           const readyCompanies = scopedCompanies.filter(company => canUserStartForm(currentUser, company.id, name)
-            && workflows.some(route => route.companyId === company.id && route.formType === name && route.stages.length > 0));
+            && workflows.some(route => route.companyId === company.id && route.formType === name && route.stages.length > 0
+              && route.stages.every(step => isOptionalSigner(route, step) || signerOptions(route, step, users, currentUser.id).length > 0)));
           const configured = readyCompanies.length > 0;
           return (
             <article key={name} className="workspace-panel flex min-w-0 flex-col gap-3 p-5 transition-colors hover:border-workspace-steel focus-within:border-workspace-steel">
@@ -81,11 +83,11 @@ export function FormsLibraryView({ initialForm }: { initialForm?: LibraryEditorF
               <div className="border-t border-workspace-line pt-3 text-xs text-workspace-muted">
                 <p className="font-medium">{department}</p>
                 <p className={`mt-1 ${configured ? 'font-medium text-teal-800' : 'text-slate-600'}`}>
-                  {configured ? (selectedScope === 'PEG' ? `Ready in ${readyCompanies.map(company => company.id).join(', ')}` : 'Signing route configured') : 'Signing route required to send'}
+                  {configured ? (selectedScope === 'PEG' ? `Ready in ${readyCompanies.map(company => company.id).join(', ')}` : 'Ready to start') : 'Check signer availability before sending'}
                 </p>
               </div>
               <button type="button" aria-label={`Open form: ${name}`} onClick={() => launch(name)} className="workspace-control inline-flex min-h-10 items-center justify-between gap-2 px-3 text-sm font-semibold">
-                Open form <ArrowRight className="size-4" aria-hidden="true" />
+                Start request <ArrowRight className="size-4" aria-hidden="true" />
               </button>
             </article>
           );

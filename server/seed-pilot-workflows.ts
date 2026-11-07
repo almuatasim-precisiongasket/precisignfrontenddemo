@@ -37,7 +37,7 @@ export function seedPilotWorkflows(path: string) {
             companyId, formType, version: 1,
             preventSelfApproval: true, allowDirectorOverride: false, reminderDays: 2, escalationDays: 5,
             rejectionBehavior: 'archive', returnBehavior: 'restart_workflow',
-            processingUserIds: companyId === 'FSG' && formType === 'IT Request' ? ['pilot-anzar'] : [],
+            processingUserIds: [],
             stages: signerIds.map((id, index) => {
               const final = index === signerIds.length - 1;
               return {

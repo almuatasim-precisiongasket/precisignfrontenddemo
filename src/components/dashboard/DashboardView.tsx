@@ -16,20 +16,19 @@ import {
   RefreshCw,
   Plus,
   ArrowRight,
-  ExternalLink,
   Clock,
   Check,
   Building,
   ChevronRight,
   LayoutGrid,
-  Zap,
-  BarChart3,
 } from 'lucide-react';
 import { companyForms } from '../library/FormsLibraryView';
 import { canUserStartForm } from '../../utils/companyAccess';
 import { CompactApprovalChain } from '../common/CompactApprovalChain';
 import { ApprovalJourneyModal } from '../common/ApprovalJourneyModal';
-import { ApprovalJourneyPanel } from '../journey/ApprovalJourneyPanel';
+import { canOfferEarlyCompletion } from '../journey/RouteProgress';
+import { RequestJourneySummary } from './RequestJourneySummary';
+import { RequestActivity } from './RequestActivity';
 
 export const DashboardView: React.FC = () => {
   const {
@@ -100,6 +99,9 @@ export const DashboardView: React.FC = () => {
     }
     if (needsMyAction(request, currentUser)) {
       return { title: 'A route needs your signature', label: 'Review & sign' };
+    }
+    if (canOfferEarlyCompletion(request, currentUser.id) && request.approvalSteps.at(-1)?.status === 'Approved') {
+      return { title: 'You’ve signed this request', label: 'Review completion' };
     }
     return { title: request.formType, label: 'View details' };
   }
@@ -192,7 +194,7 @@ export const DashboardView: React.FC = () => {
   };
 
   return (
-    <div className="p-3.5 sm:p-6 space-y-5 max-w-[1720px] mx-auto">
+    <div className="dashboard-workspace p-3.5 sm:p-6 space-y-5 max-w-[1720px] mx-auto">
       {/* Top Section: Operational Status & Primary Action */}
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
@@ -265,13 +267,13 @@ export const DashboardView: React.FC = () => {
       </section>
       {draftFormData && <button type="button" className="workspace-control min-h-9 px-3 text-sm font-semibold"
         onClick={() => { setSelectedRequestFormType('Admin Work Request'); setActiveView('create-request'); }}>Resume Admin Work Request draft →</button>}
-      <div className="grid min-w-0 items-start gap-4 min-[1560px]:grid-cols-[minmax(0,1fr)_210px]">
+      <div className="grid min-w-0 items-start gap-4">
       {/* Main Operational Table Container */}
-      <div className="workspace-panel min-w-0" aria-label="Recent requests">
+      <div className="workspace-panel min-w-0" aria-label="Recent requests" id="request-list" tabIndex={-1}>
         {/* Table Controls Bar: Operational Filter Tabs + Search + Sort + Columns */}
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-t-xl border-b border-workspace-line px-3 py-3">
           {/* Segmented Filter Tabs */}
-          <div role="group" aria-label="Request views" className="flex max-w-full items-center gap-1 overflow-x-auto rounded-lg bg-workspace p-1 [&_button:focus-visible]:outline-2 [&_button:focus-visible]:-outline-offset-2 [&_button:focus-visible]:outline-workspace-steel">
+          <div role="group" aria-label="Request views" className="flex max-w-full flex-wrap items-center gap-1 rounded-lg bg-workspace p-1 [&_button:focus-visible]:outline-2 [&_button:focus-visible]:-outline-offset-2 [&_button:focus-visible]:outline-workspace-steel">
             <button
               aria-pressed={internalTab === 'all'}
               onClick={() => selectTab('all')}
@@ -363,7 +365,7 @@ export const DashboardView: React.FC = () => {
             </div>
 
             {/* Column Visibility Selector */}
-            <div className="relative">
+            <div className="request-columns-control relative">
               <button
                 onClick={() => setShowColumnsMenu(!showColumnsMenu)}
                 aria-expanded={showColumnsMenu}
@@ -416,8 +418,23 @@ export const DashboardView: React.FC = () => {
           </div>
         </div>
 
+        <div className="request-cards divide-y divide-workspace-line">
+          {displayedRequests.length === 0 && <p className="p-5 text-sm">No requests in this view. Adjust your search or filters.</p>}
+          {displayedRequests.map(req => <article key={req.id} className="space-y-3 p-4">
+            <div className="flex flex-wrap justify-between gap-2 text-xs"><strong className="break-all">{req.id}</strong><span>{req.companyId} · {req.status === 'Approved' ? 'Signing completed' : req.status}</span></div>
+            <h3 className="text-sm font-semibold">{req.title || req.formData.workDescription}</h3>
+            <p className="text-xs text-workspace-muted">{req.formType} · {req.requesterName}</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <button type="button" className="preci-link min-h-10 text-xs" aria-expanded={expandedRowId === req.id}
+                aria-controls={`card-journey-${req.id}`} onClick={() => setExpandedRowId(expandedRowId === req.id ? null : req.id)}>Signing details</button>
+              <button type="button" className="workspace-primary min-h-10 px-3 text-xs" onClick={() => openReviewRequest(req.id)}>{actionFor(req).label}</button>
+            </div>
+            {expandedRowId === req.id && <div id={`card-journey-${req.id}`}><RequestJourneySummary request={req} userId={currentUser.id}
+              onHistory={() => setSelectedJourneyRequest(req)} /></div>}
+          </article>)}
+        </div>
         {/* Operational Table */}
-        <div className="overflow-x-auto">
+        <div className="request-table overflow-x-auto">
           <table className="w-full min-w-[1120px] text-left border-collapse text-[13px]">
             <thead>
               <tr className="border-b border-workspace-line bg-workspace text-xs font-semibold text-workspace-muted">
@@ -471,7 +488,7 @@ export const DashboardView: React.FC = () => {
                             }}
                             className="inline-grid size-7 place-items-center rounded-md text-workspace-muted hover:bg-workspace focus-visible:outline-2 focus-visible:outline-workspace-steel"
                             aria-expanded={isExpanded}
-                            aria-label={`Expand details for ${req.id}`}
+                            aria-label={`${isExpanded ? "Collapse" : "Expand"} details for ${req.id}`}
                           >
                             <ChevronDown
                               className={`w-3.5 h-3.5 transition-transform ${
@@ -615,37 +632,9 @@ export const DashboardView: React.FC = () => {
                       {/* Expandable Approval Workflow Stepper & Audit Overview */}
                       {isExpanded && (
                         <tr className="bg-[#F9FAFB] border-b border-[#E2E5E9]">
-                          <td colSpan={2 + Object.values(visibleColumns).filter(Boolean).length + (visibleColumns.id ? 2 : 0)} className="p-4 pl-10">
-                            <div className="bg-white p-4 rounded-md border border-[#E2E5E9] space-y-4">
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E2E5E9] pb-3">
-                                <div>
-                                  <h4 className="text-xs font-bold text-[#192B3C] flex items-center gap-2">
-                                    <span>Approval Journey &amp; Recipient Tracking</span>
-                                    <span className="text-[10px] font-normal text-slate-500">
-                                      (Workflow Config v{req.workflowVersion})
-                                    </span>
-                                  </h4>
-                                  <p className="text-[11px] text-slate-500 mt-0.5">
-                                    Document description: "{req.formData.workDescription}"
-                                  </p>
-                                </div>
-
-                                <button
-                                  onClick={() => openReviewRequest(req.id)}
-                                  className="text-xs font-semibold text-[#365C78] hover:text-[#2A4A62] flex items-center gap-1 self-start sm:self-auto"
-                                >
-                                  <span>Open full review &amp; audit history</span>
-                                  <ExternalLink className="w-3 h-3" />
-                                </button>
-                              </div>
-
-                              {/* Detailed Structured Journey Panel */}
-                              <ApprovalJourneyPanel
-                                request={req}
-                                currentUserId={currentUser.id}
-                                showDocumentButton={false}
-                              />
-                            </div>
+                          <td colSpan={2 + Object.values(visibleColumns).filter(Boolean).length + (visibleColumns.id ? 2 : 0)} className="px-3 py-2 sm:pl-10">
+                            <RequestJourneySummary request={req} userId={currentUser.id}
+                              onHistory={() => setSelectedJourneyRequest(req)} />
                           </td>
                         </tr>
                       )}
@@ -675,33 +664,11 @@ export const DashboardView: React.FC = () => {
         </div>
       </div>
 
-        <aside className="grid gap-3 sm:max-[1560px]:grid-cols-2" aria-label="Request shortcuts and totals">
-          <section className="workspace-panel overflow-hidden">
-            <h2 className="flex items-center gap-2 border-b border-workspace-line px-3 py-3 text-sm font-bold"><Zap aria-hidden="true" className="size-4 text-workspace-teal" />Quick actions</h2>
-            <div className="p-1.5">
-              {([
-                ['Needs my action', pendingForMeRequests.length, 'pending', Inbox],
-                ['Requests I started', myRequests.length, 'my', FileText],
-                ['Returned requests', returnedRequests.length, 'returned', RotateCcw],
-                ['Signing completed', approvedRequests.length, 'approved', CheckCircle2],
-              ] as const).map(([label, count, tab, Icon]) => (
-                <button type="button" key={tab} aria-pressed={internalTab === tab} onClick={() => selectTab(tab)}
-                  className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-xs font-semibold hover:bg-workspace focus-visible:outline-2 focus-visible:outline-workspace-steel aria-pressed:bg-workspace-tint">
-                  <Icon aria-hidden="true" className="size-4 shrink-0 text-workspace-teal" />
-                  <span className="flex-1">{label} ({count})</span><ChevronRight aria-hidden="true" className="size-3.5 shrink-0" />
-                </button>
-              ))}
-            </div>
-          </section>
-          <section className="workspace-panel overflow-hidden">
-            <h2 className="flex items-center gap-2 border-b border-workspace-line px-3 py-3 text-sm font-bold"><BarChart3 aria-hidden="true" className="size-4 text-workspace-teal" />At a glance</h2>
-            <dl className="divide-y divide-workspace-line px-3 text-xs">
-              <div className="flex justify-between gap-2 py-2.5"><dt>Requests in this view</dt><dd className="font-bold tabular-nums">{companyRequests.length}</dd></div>
-              <div className="flex justify-between gap-2 py-2.5"><dt>Awaiting approval</dt><dd className="font-bold tabular-nums">{companyRequests.filter(request => request.status === 'Pending Approval').length}</dd></div>
-              <div className="flex justify-between gap-2 py-2.5"><dt>Signing completed</dt><dd className="font-bold tabular-nums">{approvedRequests.length}</dd></div>
-            </dl>
-          </section>
-        </aside>
+        <RequestActivity total={companyRequests.length} items={[
+          { label: 'Needs my action', count: pendingForMeRequests.length, key: 'pending', color: '#087b79', active: internalTab === 'pending' },
+          { label: 'Returned', count: returnedRequests.length, key: 'returned', color: '#c56a10', active: internalTab === 'returned' },
+          { label: 'Signing completed', count: approvedRequests.length, key: 'approved', color: '#365c78', active: internalTab === 'approved' },
+        ]} select={key => { selectTab(key as typeof internalTab); document.getElementById('request-list')?.focus(); }} />
       </div>
 
       {/* Approval Journey Inspection Modal */}

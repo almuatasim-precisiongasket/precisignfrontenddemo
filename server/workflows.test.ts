@@ -56,11 +56,14 @@ test('workflow company grants control settings, participants and saved snapshots
  const origin='http://localhost:3000';
  const app=await createApp(db,{origin,secureCookies:false}); const server=app.listen(0,'127.0.0.1'); await once(server,'listening');
  const base=`http://127.0.0.1:${(server.address() as {port:number}).port}/api`;
- const make=(companyId:string, backup?:string) => ({...INITIAL_WORKFLOWS[0],id:`wf-${companyId}`,companyId,formType:'IT Request',version:0,processingUserIds:[ids[2]],stages:[{...INITIAL_WORKFLOWS[0].stages.at(-1),stageNumber:1,assignedUserId:ids[2],assignedRole:'Admin',backupSignerIds:backup?[backup]:[]}]});
+ const make=(companyId:string, backup?:string) => ({...INITIAL_WORKFLOWS[0],id:`wf-${companyId}`,companyId,formType:'IT Request',version:0,processingUserIds:[],stages:[{...INITIAL_WORKFLOWS[0].stages.at(-1),stageNumber:1,assignedUserId:ids[2],assignedRole:'Admin',backupSignerIds:backup?[backup]:[]}]});
  const save=(actor:number,wf:any,expectedVersion=0) => fetch(`${base}/workflows/${wf.companyId}/IT%20Request`,{method:'PUT',headers:{Origin:origin,Cookie:cookies[actor],'Content-Type':'application/json'},body:JSON.stringify({expectedVersion,workflow:wf})});
  try {
   assert.equal((await save(1,make('ICCL',ids[3]))).status,403);
-  assert.equal((await save(5,make('ICCL',ids[3]))).status,403);
+  assert.equal((await save(5,make('ICCL',ids[3]))).status,200);
+  db.prepare("UPDATE account_access SET company_grants='[\"PEW\"]' WHERE user_id=?").run(ids[5]);
+  assert.equal((await save(5,make('FSG',ids[3]))).status,403);
+  db.prepare('DELETE FROM workflows WHERE company_id=? AND form_type=?').run('ICCL','IT Request');
   assert.equal((await save(0,make('ICCL',ids[4]))).status,400);
   assert.equal((await save(0,{...make('ICCL',ids[3]),processingUserIds:[ids[4]]})).status,400);
   assert.equal((await save(0,{...make('ICCL',ids[3]),stages:[{...make('ICCL').stages[0],assignedUserId:ids[4]}]})).status,400);

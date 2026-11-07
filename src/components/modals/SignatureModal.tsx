@@ -1,3 +1,4 @@
+import { WorkspaceDialog } from '../common/WorkspaceDialog';
 import React, { useRef, useState, useEffect } from 'react';
 import { UserProfile } from '../../types/index';
 import { X, PenTool, Type, Upload, Check, Shield } from 'lucide-react';
@@ -143,17 +144,20 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-full overflow-y-auto border border-[#CBD5E1]">
+    <WorkspaceDialog titleId="signature-dialog-title" onClose={onClose} busy={saving} className="max-w-lg">
+      <div className="w-full">
         {/* Header */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-[#E2E5E9] bg-[#F5F6F8]">
           <div className="min-w-0 pr-2">
-            <h3 className="text-xs sm:text-sm font-bold text-[#192B3C] truncate">{title}</h3>
+            <h2 id="signature-dialog-title" className="text-sm font-bold text-workspace-ink">{title}</h2>
             <p className="text-[11px] sm:text-xs text-slate-500 truncate">
-              Applying signature for <span className="font-semibold text-slate-800">{user.name}</span> ({user.role})
+              Signing as <span className="font-semibold text-slate-800">{user.name}</span>
             </p>
           </div>
           <button
+            type="button"
+            aria-label="Close signature dialog"
+            data-dialog-focus
             disabled={saving}
             onClick={onClose}
             className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors shrink-0"
@@ -165,6 +169,8 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
         {/* Tab selection */}
         <fieldset disabled={saving} className="flex border-b border-[#E2E5E9] px-4 sm:px-6 pt-2.5 sm:pt-3 bg-white overflow-x-auto">
           <button
+            type="button"
+            aria-pressed={tab === 'style'}
             onClick={() => setTab('style')}
             className={`flex items-center gap-2 pb-2.5 px-3 text-xs font-semibold border-b-2 transition-colors whitespace-nowrap shrink-0 ${
               tab === 'style'
@@ -173,9 +179,11 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
             }`}
           >
             <Type className="w-3.5 h-3.5" />
-            <span>Handwritten Script</span>
+            <span>Type</span>
           </button>
           <button
+            type="button"
+            aria-pressed={tab === 'draw'}
             onClick={() => setTab('draw')}
             className={`flex items-center gap-2 pb-2.5 px-3 text-xs font-semibold border-b-2 transition-colors ${
               tab === 'draw'
@@ -184,9 +192,11 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
             }`}
           >
             <PenTool className="w-3.5 h-3.5" />
-            <span>Draw Signature</span>
+            <span>Draw</span>
           </button>
           <button
+            type="button"
+            aria-pressed={tab === 'upload'}
             onClick={() => setTab('upload')}
             className={`flex items-center gap-2 pb-2.5 px-3 text-xs font-semibold border-b-2 transition-colors ${
               tab === 'upload'
@@ -195,7 +205,7 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
             }`}
           >
             <Upload className="w-3.5 h-3.5" />
-            <span>Upload Seal / Image</span>
+            <span>Upload</span>
           </button>
         </fieldset>
 
@@ -320,6 +330,6 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </WorkspaceDialog>
   );
 };

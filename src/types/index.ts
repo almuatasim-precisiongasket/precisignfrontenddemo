@@ -24,7 +24,7 @@ export interface UserCompanyAccess {
   isGroupAdmin?: boolean;
 }
 
-export type UserRole = 'Admin' | 'General Manager' | 'Director' | 'IT' | 'Finance' | 'HR' | 'Purchase';
+export type UserRole = 'Employee' | 'Admin' | 'General Manager' | 'Director' | 'IT' | 'Finance' | 'HR' | 'Purchase';
 
 export interface UserProfile {
   companyGrants?: CompanyId[];
@@ -116,6 +116,7 @@ export interface AdminWorkFormData {
 }
 
 export interface WorkflowStageConfig {
+  documentSlot?: 'department-head';
   eligibleSignerIds?: string[];
   requiredOnSubmit?: boolean;
   mustSign?: boolean;
@@ -133,6 +134,8 @@ export interface WorkflowStageConfig {
 }
 
 export interface WorkflowConfig {
+  signerSelection?: 'company-directory';
+  allowFinalBypass?: boolean;
   allowCashReceiptWaiver?: boolean;
   processingUserIds?: string[];
   id: string;

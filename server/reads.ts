@@ -18,7 +18,7 @@ export function readRoutes(db: DatabaseSync, origin: string, sessionToken: (requ
     const placeholders = allowed.map(() => '?').join(',');
     const rows = allowed.length ? db.prepare(`SELECT id,name,logo_data_url FROM companies LEFT JOIN company_logos ON company_id=id WHERE id IN (${placeholders})`).all(...allowed) : [];
     const companies: Company[] = rows.map(row => ({ id: row.id as CompanyId, code: String(row.id), name: String(row.name), logoDataUrl: (row.logo_data_url as string | null) ?? undefined, fullName: `${row.id} - ${row.name}`, groupName: 'PRECISION ENGINEERING GROUP' })).map(currentCompanyDisplay);
-    const users = allowed.length ? db.prepare('SELECT id,email,name,role,department,company_id,allowed_companies,group_admin,company_grants FROM account_profiles WHERE COALESCE(is_disabled,0)=0').all()
+    const users = allowed.length ? db.prepare('SELECT id,email,name,role,department,company_id,allowed_companies,group_admin,company_grants,role_override,is_super_admin FROM account_profiles WHERE COALESCE(is_disabled,0)=0').all()
       .map(safeProfile).filter(candidate => allowed.some(id => canUserAccessCompany(candidate, id))) : [];
     const workflows = allowed.length ? db.prepare(`SELECT config FROM workflows WHERE company_id IN (${placeholders})`).all(...allowed).map(row => JSON.parse(String(row.config))) : [];
     res.json({ user: { ...user, ...ownSignature(db, user.id) }, companies, users, workflows });

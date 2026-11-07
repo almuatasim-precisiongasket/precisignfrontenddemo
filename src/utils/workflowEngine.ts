@@ -214,13 +214,13 @@ export function approveRequestStage(params: {
     updatedFormData.approvalAuthoritySignatureDate = now;
     updatedFormData.approvalAuthoritySignatureDataUrl =
       signatureDataUrl || actingUser.signatureDataUrl;
-  } else if (request.formType === 'Administrative & Payment Request' && signingIndex === 0 && finalIndex === 1 && updatedFormData.administrativePayment) {
+  } else if (request.formType === 'Administrative & Payment Request' && (request.workflowConfig.signerSelection === 'company-directory' ? currentStageConfig?.documentSlot === 'department-head' : signingIndex === 0 && finalIndex === 1) && updatedFormData.administrativePayment) {
     const dataUrl = signatureDataUrl || actingUser.signatureDataUrl;
     if (dataUrl) updatedFormData.administrativePayment = {
       ...updatedFormData.administrativePayment,
       departmentHeadSignature: { name: actingUser.name, dataUrl },
     };
-  } else if (request.formType === 'Expense Claim' && signingIndex === 0 && finalIndex === 1 && updatedFormData.expenseClaim) {
+  } else if (request.formType === 'Expense Claim' && (request.workflowConfig.signerSelection === 'company-directory' ? currentStageConfig?.documentSlot === 'department-head' : signingIndex === 0 && finalIndex === 1) && updatedFormData.expenseClaim) {
     const dataUrl = signatureDataUrl || actingUser.signatureDataUrl;
     if (dataUrl) updatedFormData.expenseClaim = {
       ...updatedFormData.expenseClaim,

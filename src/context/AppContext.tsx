@@ -284,7 +284,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
     setUsers((prev) => prev.map((u) => (u.id === userId ? updated : u)));
   };
 
-  const currentUser = users.find((u) => u.id === currentUserId) || users[0] || {
+  const matchingUser = users.find((u) => u.id === currentUserId);
+  const currentUser = matchingUser ?? apiData?.bootstrap.user ?? users[0] ?? {
     id: 'user-afzal',
     name: 'Afzal Kazi',
     email: 'afzal.kazi@precision-eg.com',
@@ -493,6 +494,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
   };
 
   if (initialError) return <div className="p-6 text-sm" role="alert">{initialError}</div>;
+
+  if (readOnly && !matchingUser) return <p role="alert" className="p-6">Could not load your account. Reload to sign in again.</p>;
 
   return (
     <AppContext.Provider

@@ -1,6 +1,7 @@
 import React from 'react';
 import { RequestRecord } from '../../types/index';
-import { buildApprovalJourney, JourneyMilestone } from '../../utils/approvalJourney';
+import { signingProgress } from '../journey/RouteProgress';
+import { JourneyMilestone } from '../../utils/approvalJourney';
 import { Check, RotateCcw, XCircle, PenLine, ShieldCheck, ChevronRight } from 'lucide-react';
 
 interface CompactApprovalChainProps {
@@ -20,8 +21,8 @@ export const CompactApprovalChain: React.FC<CompactApprovalChainProps> = ({
   compact = false,
   showProgressText = true,
 }) => {
-  const journey = buildApprovalJourney(request, currentUserId);
-  const { milestones, responsibility } = journey;
+  const journey = signingProgress(request, currentUserId);
+  const { milestones, headline } = journey;
 
   const visibleMilestones = milestones.slice(0, maxVisible);
   const currentMilestone = milestones.find(milestone => milestone.status === 'current');
@@ -99,8 +100,8 @@ export const CompactApprovalChain: React.FC<CompactApprovalChainProps> = ({
     {compact && overflowCount > 0 && <span className="mt-1 block text-center text-[11px] font-semibold text-workspace-steel">+{overflowCount} more · View journey</span>}
     {!compact && showProgressText && (
       <span className="mt-2 block border-t border-workspace-line pt-1.5 text-[11px] text-workspace-muted">
-        {request.status === 'Pending Approval' && responsibility.responsiblePersonName && (
-          <span className="mb-1 block font-semibold text-workspace-ink">{currentMilestone?.isAssignedToCurrentUser ? 'Your signature is next' : `Waiting for ${responsibility.responsiblePersonName}`}</span>
+        {request.status === 'Pending Approval' && (
+          <span className="mb-1 block font-semibold text-workspace-ink">{headline}</span>
         )}
         <span className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
           <span>{signed}/{request.approvalSteps.length} approvals signed{bypassed ? ` · ${bypassed} bypassed` : ''}</span>

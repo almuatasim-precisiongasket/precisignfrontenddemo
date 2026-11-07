@@ -28,6 +28,16 @@ export function pendingProcessing(request: RequestRecord): ProcessingAction | un
   }
 }
 
+export function canJoinProcessingTeam(formType: string, role: UserProfile['role']): boolean {
+  switch (formType) {
+    case 'IT Request': return role === 'IT';
+    case 'Expense Claim': return role === 'Finance';
+    case 'Cash Voucher':
+    case 'Administrative & Payment Request': return role === 'Admin' || role === 'Finance';
+    default: return false;
+  }
+}
+
 export function canRecordProcessing(request: RequestRecord, actor: UserProfile, action: ProcessingAction) {
   if (!canUserAccessCompany(actor, request.companyId)) return false;
   const pending = pendingProcessing(request);

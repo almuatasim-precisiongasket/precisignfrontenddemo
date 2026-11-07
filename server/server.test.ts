@@ -77,6 +77,7 @@ test('signup creates a private zero-grant account and stores an optional signatu
     const cookie = login.headers.get('set-cookie')!.split(';')[0];
     const get = (path: string, value = cookie) => fetch(base + path, { headers: { Cookie: value } });
     const bootstrap = await (await get('/bootstrap')).json();
+    assert.equal(bootstrap.user.role, 'Employee');
     assert.deepEqual(bootstrap.user.companyGrants, []);
     assert.deepEqual(bootstrap.companies, []);
     assert.deepEqual(bootstrap.users, []);
@@ -116,7 +117,7 @@ test('schema initializes empty, rolls back and persists accounts across reopen',
     db.close(); db = openDatabase(path);
     assert.equal(sessionUser(db, session)?.id, id);
     assert.equal(db.prepare('SELECT count(*) AS n FROM users').get()!.n, 1);
-    assert.equal(db.prepare('PRAGMA user_version').get()!.user_version, 8);
+    assert.equal(db.prepare('PRAGMA user_version').get()!.user_version, 9);
   } finally { db.close(); rmSync(directory, { recursive: true }); }
 });
 
@@ -140,7 +141,7 @@ test('a failed upgrade rolls back every pending migration and can be retried', (
     } finally { inspect.close(); }
     const upgraded = openDatabase(path);
     try {
-      assert.equal(upgraded.prepare('PRAGMA user_version').get()!.user_version, 8);
+      assert.equal(upgraded.prepare('PRAGMA user_version').get()!.user_version, 9);
       assert.ok(upgraded.prepare("SELECT name FROM sqlite_schema WHERE name='route_administrators'").get());
     } finally { upgraded.close(); }
   } finally { rmSync(directory, { recursive: true }); }
@@ -155,7 +156,7 @@ test('version-four migration keeps legacy accounts and grants', async () => {
     db.exec('DROP TABLE password_resets; DROP VIEW account_profiles; DROP TABLE account_access; PRAGMA user_version=4');
     db.close();
     db = openDatabase(path);
-    assert.equal(db.prepare('PRAGMA user_version').get()!.user_version, 8);
+    assert.equal(db.prepare('PRAGMA user_version').get()!.user_version, 9);
     const token = createSession(db, id);
     const user = sessionUser(db, token);
     assert.equal(user?.id, id);

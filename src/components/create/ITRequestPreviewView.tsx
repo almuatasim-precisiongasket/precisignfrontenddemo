@@ -1,3 +1,6 @@
+import { EditorInput, EditorTextarea } from './RequestEditorControls';
+import { EditorViewToggle } from './EditorViewToggle';
+import { useFieldErrors } from './useFieldErrors';
 import { useState } from 'react';
 import { ArrowLeft, Printer } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -14,13 +17,15 @@ const control = 'block w-full rounded-md border border-slate-300 bg-white px-3 p
 
 export function ITRequestPreviewView({ onBack }: { onBack: () => void }) {
   const { currentUser, companies, selectedScope, workflows, users, submitNewRequest, openReviewRequest } = useApp();
+  const [view, setView] = useState<'editor' | 'preview'>('editor');
+  const validation = useFieldErrors();
   const [signing, setSigning] = useState(false);
   const [error, setError] = useState('');
   const groupView = selectedScope === 'PEG';
   const availableCompanies = companies.filter(company => canUserStartForm(currentUser, company.id, 'IT Request'));
   const [companyId, setCompanyId] = useState<CompanyId | ''>('');
   const organization = availableCompanies.find(company => company.id === (groupView ? companyId : selectedScope));
-  const workflow = workflows.find(route => route.companyId === organization?.id && route.formType === 'IT Request');
+  const workflow = workflows.find(route => route.companyId === organization?.id && route.formType === 'IT Request' && route.stages.length > 0);
   const [choices, setChoices] = useState<Choices>({});
   const [fields, setFields] = useState<ITRequestFields>(() => ({
     department: currentUser.department,
@@ -37,11 +42,16 @@ export function ITRequestPreviewView({ onBack }: { onBack: () => void }) {
   }
 
   function reviewAndSign() {
+    setView('editor');
+    setError('');
+    if (!validation.validate([
+      ['company', !!organization, 'Select a legal company.'],
+      ...(['department', 'date', 'requestType', 'priority', 'details', 'justification'] as const).map(key => [key, !!fields[key].trim(), 'Complete this field.'] as [string, boolean, string]),
+    ])) return;
     const selection = workflow && applySignerChoices(workflow, users, currentUser.id, choices);
     if (!organization || !selection || selection.error) {
-      setError(organization ? '' : 'Select a legal company before sending.');
-    } else if (!fields.date || !fields.department.trim() || !fields.requestType.trim() || !fields.priority || !fields.details.trim() || !fields.justification.trim()) {
-      setError('Complete the request fields and choose a priority before sending.');
+      setError('');
+      requestAnimationFrame(() => document.getElementById('signer-review')?.focus());
     } else {
       setError('');
       setSigning(true);
@@ -72,7 +82,7 @@ export function ITRequestPreviewView({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <div className="it-request-preview mx-auto max-w-[1450px] space-y-5 p-4 md:p-6">
+    <div data-editor-view={view} className="request-editor it-request-preview mx-auto max-w-[1450px] space-y-5 p-4 md:p-6">
       <header className="no-print space-y-3">
         <button type="button" onClick={onBack} className="inline-flex items-center gap-2 rounded py-2 text-sm font-semibold text-[#365C78] hover:underline">
           <ArrowLeft aria-hidden="true" size={16} /> Back to forms
@@ -90,35 +100,36 @@ export function ITRequestPreviewView({ onBack }: { onBack: () => void }) {
         </div>
       </header>
 
-      <div className="it-request-layout grid items-start gap-5 xl:grid-cols-[minmax(20rem,2fr)_minmax(0,3fr)]">
-        <section aria-label="Request fields" className="no-print workspace-panel space-y-5 p-4 sm:p-5">
+      <EditorViewToggle value={view} onChange={setView} />
+      <div className="editor-columns it-request-layout">
+        <section aria-label="Request fields" className="editor-fields no-print workspace-panel space-y-5 p-4 sm:p-5">
           <div className="space-y-4">
             <h2 className="text-base font-bold">Requester information</h2>
-            <RequestCompanyField form="IT Request" value={organization?.id ?? ''} onChange={groupView ? next => {
+            <div><RequestCompanyField fieldProps={validation.props("company")} form="IT Request" value={organization?.id ?? ''} onChange={groupView ? next => {
               setCompanyId(next);
               setChoices({});
               setError('');
-            } : undefined} />
+            } : undefined} />{validation.message("company")}</div>
             <label className="block space-y-1 text-sm font-medium">
               <span>Name of the requester</span>
-              <input className={control} value={fields.requester} readOnly />
+              <EditorInput className={control} value={fields.requester} readOnly />
             </label>
             <label className="block space-y-1 text-sm font-medium">
               <span>Department</span>
-              <input className={control} value={fields.department} onChange={event => update('department', event.target.value)} />
+              <EditorInput className={control} {...validation.props("department")} value={fields.department} onChange={event => update('department', event.target.value)} />{validation.message("department")}
             </label>
             <label className="block space-y-1 text-sm font-medium">
               <span>Date of request</span>
-              <input className={control} type="date" value={fields.date} onChange={event => update('date', event.target.value)} />
+              <EditorInput className={control} type="date" {...validation.props("date")} value={fields.date} onChange={event => update('date', event.target.value)} />{validation.message("date")}
             </label>
           </div>
           <div className="space-y-4 border-t border-slate-200 pt-4">
             <h2 className="text-base font-bold">Request information</h2>
             <label className="block space-y-1 text-sm font-medium">
               <span>Type of request</span>
-              <input className={control} maxLength={150} placeholder="e.g. Network access" value={fields.requestType} onChange={event => update('requestType', event.target.value)} />
+              <EditorInput className={control} maxLength={150} placeholder="e.g. Network access" {...validation.props("requestType")} value={fields.requestType} onChange={event => update('requestType', event.target.value)} />{validation.message("requestType")}
             </label>
-            <fieldset className="space-y-1">
+            <fieldset {...validation.props("priority")} tabIndex={-1} className="space-y-1">
               <legend className="text-sm font-medium">Priority</legend>
               <div className="flex flex-wrap gap-2">
                 {priorities.map(priority => (
@@ -128,23 +139,24 @@ export function ITRequestPreviewView({ onBack }: { onBack: () => void }) {
                   </label>
                 ))}
               </div>
+              {validation.message("priority")}
             </fieldset>
             <label className="block space-y-1 text-sm font-medium">
               <span>Request in detail</span>
-              <textarea className={control} rows={4} maxLength={20000} placeholder="Describe what you need from IT." value={fields.details} onChange={event => update('details', event.target.value)} />
+              <EditorTextarea className={control} rows={4} maxLength={20000} placeholder="Describe what you need from IT." {...validation.props("details")} value={fields.details} onChange={event => update('details', event.target.value)} />{validation.message("details")}
             </label>
             <label className="block space-y-1 text-sm font-medium">
               <span>Business justification</span>
-              <textarea className={control} rows={4} maxLength={10000} placeholder="Explain what work this request will support." value={fields.justification} onChange={event => update('justification', event.target.value)} />
+              <EditorTextarea className={control} rows={4} maxLength={10000} placeholder="Explain what work this request will support." {...validation.props("justification")} value={fields.justification} onChange={event => update('justification', event.target.value)} />{validation.message("justification")}
             </label>
           </div>
           <div className="space-y-2 border-t border-slate-200 pt-4 text-sm">
-            <SignerChoices form="IT Request" workflow={workflow} users={users} requester={currentUser} value={choices} onChange={setChoices} />
+            <SignerChoices form="IT Request" workflow={workflow} companySelected={!!organization} users={users} requester={currentUser} value={choices} onChange={setChoices} />
             {error && <p role="alert" className="text-rose-700">{error}</p>}
             <button type="button" onClick={reviewAndSign} className="workspace-primary min-h-10 px-4 py-2">Sign &amp; send</button>
           </div>
         </section>
-        <section aria-labelledby="it-live-preview-heading" className="it-request-preview-panel min-w-0 rounded-lg border border-slate-200 bg-[#E8EDF1]">
+        <section aria-labelledby="it-live-preview-heading" className="editor-preview it-request-preview-panel min-w-0 rounded-lg border border-slate-200 bg-[#E8EDF1]">
           <div className="no-print flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
             <h2 id="it-live-preview-heading" className="flex items-center gap-2 text-sm font-bold">
               <span aria-hidden="true" className="size-2 rounded-full bg-teal-600" /> Live document preview

@@ -49,8 +49,12 @@ test('synthetic pilot submits all four forms across three legal companies', asyn
         signatureDataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVR4nGMQMgkTMgljgFAAEA4CcUNrdOsAAAAASUVORK5CYII=',
         formData: { dateOfRequest: '2026-11-06', department: 'Pilot', priority: 'Medium', workDescription: 'Synthetic test', documents: INITIAL_REQUESTS[0].formData.documents },
       };
-      const create = (companyId: string, formType: string, details: object, actor = actors[0]) =>
-        call('/requests', actor, { ...input, companyId, formType, formData: { ...input.formData, ...details } });
+      const create = (companyId: string, formType: string, details: object, actor = actors[0]) => {
+        const row = db.prepare('SELECT config FROM workflows WHERE company_id=? AND form_type=?').get(companyId, formType);
+        const stages = row && formType !== 'Admin Work Request' ? JSON.parse(String(row.config)).stages : [];
+        const signerChoices = stages.length ? Object.fromEntries(stages.map((stage: { id: string; assignedUserId: string }) => [stage.id, stage.assignedUserId])) : undefined;
+        return call('/requests', actor, { ...input, companyId, formType, signerChoices, formData: { ...input.formData, ...details } });
+      };
       const records = [];
       try {
         assert.equal((await create('PEG', 'IT Request', {})).status, 400);

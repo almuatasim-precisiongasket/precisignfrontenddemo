@@ -38,7 +38,7 @@ export async function provisionUser(db: DatabaseSync, input: { email: string; na
 
 export function safeProfile(row: Record<string, unknown>): UserProfile {
   const name = String(row.name);
-  return { id: String(row.id), name, email: String(row.email), role: row.role as UserRole, department: String(row.department), companyId: row.company_id as CompanyId,
+  return { id: String(row.id), name, email: String(row.email), role: (row.role_override ?? row.role) as UserRole, department: String(row.department), companyId: row.company_id as CompanyId,
     allowedCompanyIds: JSON.parse(String(row.allowed_companies)),
     companyGrants: typeof row.company_grants === 'string' ? JSON.parse(row.company_grants) : undefined,
     formGrants: typeof row.form_grants === 'string' ? JSON.parse(row.form_grants) : undefined,
@@ -66,7 +66,7 @@ export async function registerAccount(db: DatabaseSync, input: unknown) {
     const result = db.prepare(`INSERT INTO users (id,email,name,role,department,company_id,password_hash)
       VALUES (?, ?, ?, 'Admin', ?, 'PEW', ?) ON CONFLICT(email) DO NOTHING`).run(id, email, name, department, hash);
     if (result.changes === 0) throw new RequestError(409, 'Account could not be created.');
-    db.prepare('INSERT INTO account_access (user_id) VALUES (?)').run(id);
+    db.prepare("INSERT INTO account_access (user_id,role_override) VALUES (?,'Employee')").run(id);
     if (typeof signature === 'string') {
       db.prepare('INSERT INTO user_signatures VALUES (?, ?, ?)').run(id, signature, name);
     }

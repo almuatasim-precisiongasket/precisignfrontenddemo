@@ -36,11 +36,19 @@ export function CompanyBrandingView({ repository }: { repository: IAccountAdmini
 
 function CompanyLogoEditor({ company, repository }: { company: Company; repository: IAccountAdministrationRepository }) {
   const [logo, setLogo] = useState(company.logoDataUrl ?? null);
+  const [preview, setPreview] = useState<string>();
   const [file, setFile] = useState<File>();
   const [inputKey, setInputKey] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    if (!file) { setPreview(undefined); return; }
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
 
   async function save(remove: boolean) {
     if (saving || (!remove && !file)) return;
@@ -68,11 +76,13 @@ function CompanyLogoEditor({ company, repository }: { company: Company; reposito
   return (
     <article className="workspace-panel grid gap-4 p-5 sm:grid-cols-[8rem_minmax(0,1fr)]">
       <div className="grid h-20 w-32 place-items-center rounded-lg border border-slate-200 bg-white p-2">
-        {logo ? <img className="max-h-full max-w-full object-contain" src={logo} alt={`${company.code} logo`} />
+        {(preview || logo) ? <img className="max-h-full max-w-full object-contain" src={preview || logo || undefined} alt={`${company.code} logo`} />
           : <span className="text-center text-xs text-workspace-muted"><ImageIcon aria-hidden="true" className="mx-auto mb-1 size-5" /> No logo</span>}
       </div>
       <div className="min-w-0 space-y-3">
         <h2 className="font-semibold">{company.fullName}</h2>
+        {file && <p role="status" className="break-all text-xs font-semibold text-workspace-teal">Unsaved preview · {file.name}</p>}
+        <p className="text-xs text-workspace-muted">PNG or JPEG, up to 2 MiB. Submitted requests keep their original branding.</p>
         <label className="block text-sm">
           <span className="block font-medium">Choose a logo for {company.code}</span>
           <input key={inputKey} type="file" accept="image/png,image/jpeg" disabled={saving} className="mt-1 block max-w-full text-sm"
@@ -87,6 +97,7 @@ function CompanyLogoEditor({ company, repository }: { company: Company; reposito
         </label>
         <div className="flex flex-wrap gap-2">
           <button type="button" disabled={!file || saving} onClick={() => void save(false)} className="workspace-control px-3 py-2 text-sm font-semibold disabled:opacity-50">Save logo</button>
+          {file && <button type="button" disabled={saving} className="workspace-control px-3 py-2 text-sm" onClick={() => { setFile(undefined); setInputKey(value => value + 1); setError(''); }}>Discard selection</button>}
           {logo && <button type="button" disabled={saving} onClick={() => void save(true)} className="workspace-control px-3 py-2 text-sm">Remove logo</button>}
         </div>
         {error && <p role="alert" className="text-sm text-red-700">{error}</p>}

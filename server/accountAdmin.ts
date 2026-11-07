@@ -15,10 +15,10 @@ export function accountAdminRoutes(db: DatabaseSync, origin: string, now: () => 
     next();
   });
   router.get('/admin/accounts', (_req, res) => {
-    const accounts = db.prepare(`SELECT id,name,email,department,company_grants,form_grants,is_super_admin,is_disabled
+    const accounts = db.prepare(`SELECT id,name,email,department,COALESCE(role_override,role) AS effective_role,company_grants,form_grants,is_super_admin,is_disabled
       FROM account_profiles ORDER BY name COLLATE NOCASE, id`).all();
     res.json(accounts.map(row => ({
-      id: row.id, name: row.name, email: row.email, department: row.department,
+      id: row.id, name: row.name, email: row.email, department: row.department, role: row.effective_role,
       companyGrants: typeof row.company_grants === 'string' ? JSON.parse(row.company_grants) : null,
       formGrants: typeof row.form_grants === 'string' ? JSON.parse(row.form_grants) : null,
       isSuperAdmin: row.is_super_admin === 1,
@@ -27,18 +27,24 @@ export function accountAdminRoutes(db: DatabaseSync, origin: string, now: () => 
   });
   router.patch('/admin/accounts/:id', (req, res, next) => {
     try {
-      fields(req.body, ['email', 'isDisabled']);
-      const { email, isDisabled } = req.body;
-      if (email === undefined && isDisabled === undefined) throw new RequestError(400, 'No change requested.');
+      fields(req.body, ['email', 'isDisabled', 'role']);
+      const { email, isDisabled, role } = req.body;
+      if (role !== undefined && !['Employee', 'Admin', 'IT', 'Finance'].includes(role)) throw new RequestError(400, 'Invalid staff role.');
+      if (email === undefined && isDisabled === undefined && role === undefined) throw new RequestError(400, 'No change requested.');
       if (isDisabled !== undefined && typeof isDisabled !== 'boolean') throw new RequestError(400, 'Invalid account status.');
       const normalizedEmail = email === undefined ? undefined : normalizeEmail(text(email, 254));
       if (normalizedEmail !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) throw new RequestError(400, 'Invalid email.');
       transaction(db, () => {
         const actor = res.locals.requireCurrentUser();
         if (!actor.isSuperAdmin) throw new RequestError(403, 'Administrator required.');
-        const target = db.prepare('SELECT id,email,is_super_admin,is_disabled FROM account_profiles WHERE id=?').get(req.params.id);
+        const target = db.prepare('SELECT id,email,is_super_admin,is_disabled,COALESCE(role_override,role) AS effective_role FROM account_profiles WHERE id=?').get(req.params.id);
         if (!target) throw new RequestError(404, 'Account not found.');
         if (target.is_disabled === null) throw new RequestError(409, 'Legacy account access requires migration.');
+        if (role !== undefined && role !== target.effective_role) {
+          if (['Director', 'General Manager'].includes(String(target.effective_role))) throw new RequestError(403, 'Leadership roles cannot be changed here.');
+          db.prepare('UPDATE users SET role=? WHERE id=?').run(role === 'Employee' ? 'Admin' : role, target.id!);
+          db.prepare('UPDATE account_access SET role_override=? WHERE user_id=?').run(role === 'Employee' ? 'Employee' : null, target.id!);
+        }
         if (isDisabled === true && target.is_super_admin === 1 && target.is_disabled !== 1) {
           const active = db.prepare('SELECT count(*) AS count FROM account_access WHERE is_super_admin=1 AND is_disabled=0').get()!;
           if (Number(active.count) <= 1) throw new RequestError(409, 'At least one active administrator is required.');

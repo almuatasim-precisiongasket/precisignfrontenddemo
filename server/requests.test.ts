@@ -62,7 +62,7 @@ test('HTTP lifecycle enforces signatures, stages, revisions and correction histo
     };
     db.prepare('INSERT INTO workflows VALUES (?,?,?,?)').run('PEW', combinedType, 1, JSON.stringify(combinedWorkflow));
     const optionalInput = { ...input, formType: combinedType, expectedWorkflowVersion: 1,
-      formData: { ...formData, administrativePayment: { documentDescription: '' } }, signerChoices: {} };
+      formData: { ...formData, administrativePayment: { documentDescription: '' } }, signerChoices: { [combinedWorkflow.stages[1].id]: ids[2] } };
     const finalId = combinedWorkflow.stages[1].id;
     assert.equal((await post('/requests', 0, { ...optionalInput, signerChoices: { [finalId]: null } })).status, 400);
     assert.equal((await post('/requests', 0, { ...optionalInput, signerChoices: { [finalId]: ids[4] } })).status, 400);
@@ -83,7 +83,8 @@ test('HTTP lifecycle enforces signatures, stages, revisions and correction histo
     const subsetResponse = await post('/requests', 0, withSecondaries([ids[3]]));
     assert.equal(subsetResponse.status, 201);
     assert.deepEqual((await subsetResponse.json()).workflowConfig.stages.at(-1).backupCompletionUserIds, []);
-    const optional = await post('/requests', 0, { ...optionalInput, signerChoices: undefined });
+    assert.equal((await post('/requests', 0, { ...optionalInput, signerChoices: undefined })).status, 400);
+    const optional = await post('/requests', 0, optionalInput);
     assert.equal(optional.status, 201);
     const optionalRecord = await optional.json();
     assert.equal(optionalRecord.approvalSteps.length, 1);
@@ -124,7 +125,7 @@ test('HTTP lifecycle enforces signatures, stages, revisions and correction histo
         ...input,
         formType: combinedType,
         expectedWorkflowVersion: 1,
-        signerChoices: { [combinedWorkflow.stages[0].id]: ids[1] },
+        signerChoices: { [combinedWorkflow.stages[0].id]: ids[1], [finalId]: ids[2] },
         formData: { ...formData, administrativePayment: { documentDescription: 'Supporting letter', payment } },
       };
       assert.equal((await post('/requests', 0, { ...combined, expectedWorkflowVersion: 0 })).status, 409);
@@ -172,7 +173,7 @@ test('HTTP lifecycle enforces signatures, stages, revisions and correction histo
     const itWorkflow = { ...workflow, formType: 'IT Request', version: 1, processingUserIds: [ids[3]], stages: [{ ...workflow.stages[1], stageNumber: 1 }] };
     db.prepare('INSERT INTO workflows VALUES (?,?,?,?)').run('PEW', 'IT Request', 1, JSON.stringify(itWorkflow));
     const itRequest = { requestType: 'Network access', justification: 'Project handover' };
-    const itInput = { ...input, formType: 'IT Request', expectedWorkflowVersion: 1, formData: { ...formData, itRequest } };
+    const itInput = { ...input, formType: 'IT Request', expectedWorkflowVersion: 1, signerChoices: { [finalId]: ids[2] }, formData: { ...formData, itRequest } };
     assert.equal((await post('/requests', 0, { ...itInput, formData: { ...itInput.formData, itRequest: { ...itRequest, remarks: 'Forged' } } })).status, 400);
     const itCreated = await post('/requests', 0, itInput);
     assert.equal(itCreated.status, 201);
@@ -203,7 +204,7 @@ test('HTTP lifecycle enforces signatures, stages, revisions and correction histo
     for (const { type, data } of financialForms) {
       const config = { ...itWorkflow, formType: type, processingUserIds: [ids[0], ids[4]] };
       db.prepare('INSERT INTO workflows VALUES (?,?,?,?)').run('PEW', type, 1, JSON.stringify(config));
-      const response = await post('/requests', 0, { ...input, formType: type, expectedWorkflowVersion: 1, formData: { ...formData, ...data } });
+      const response = await post('/requests', 0, { ...input, formType: type, expectedWorkflowVersion: 1, signerChoices: { [finalId]: ids[2] }, formData: { ...formData, ...data } });
       assert.equal(response.status, 201);
       const financial = await response.json();
       const approvePath = `/requests/${financial.id}/approve`;
@@ -236,7 +237,7 @@ test('HTTP lifecycle enforces signatures, stages, revisions and correction histo
         assert.deepEqual(acknowledgedVoucher.formData, approved.formData);
         db.prepare('UPDATE workflows SET config=? WHERE company_id=? AND form_type=?')
           .run(JSON.stringify({ ...config, allowCashReceiptWaiver: true }), 'PEW', type);
-        const exception = await (await post('/requests', 0, { ...input, formType: type, expectedWorkflowVersion: 1, formData: { ...formData, ...data } })).json();
+        const exception = await (await post('/requests', 0, { ...input, formType: type, expectedWorkflowVersion: 1, signerChoices: { [finalId]: ids[2] }, formData: { ...formData, ...data } })).json();
         const exceptionPath = `/requests/${exception.id}`;
         assert.equal((await post(exceptionPath + '/approve', 2, { expectedRevision: 1, signatureDataUrl: signature })).status, 200);
         assert.equal((await post(exceptionPath + '/process', 2, { ...waiver, expectedRevision: 2 })).status, 403);
@@ -258,7 +259,7 @@ test('HTTP lifecycle enforces signatures, stages, revisions and correction histo
     const receipt = { id: 'receipt', name: 'taxi.png', dataUrl: signature };
     const receiptLine = { date: '2026-11-05', particulars: 'Taxi', amount: '25.50', receiptIndex: 0 };
     const claimData = { ...formData, expenseClaim: { designation: 'Analyst', project: 'Project', lines: [receiptLine] } };
-    const receiptClaim = { ...input, formType: 'Expense Claim', expectedWorkflowVersion: 1, formData: claimData, attachments: [receipt] };
+    const receiptClaim = { ...input, formType: 'Expense Claim', expectedWorkflowVersion: 1, signerChoices: { [finalId]: ids[2] }, formData: claimData, attachments: [receipt] };
     const unlinked = { ...claimData, expenseClaim: { ...claimData.expenseClaim, lines: [receiptLine, { ...receiptLine, receiptIndex: undefined }] } };
     assert.equal((await post('/requests', 0, { ...receiptClaim, formData: unlinked })).status, 400);
     assert.equal((await post('/requests', 0, { ...receiptClaim, attachments: [] })).status, 400);

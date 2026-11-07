@@ -45,6 +45,12 @@ test('super-admin directory preserves identity, revokes sessions, and clears acc
     assert.equal((await fetch(submit, { method: 'POST', headers: { Cookie: user, Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ companyId: 'PEW', formType: 'Cash Voucher' }) })).status, 403);
     assert.equal((await get(user)).status, 403);
     assert.equal((await patch(userId, user, { isDisabled: true })).status, 403);
+    assert.equal((await patch(userId, user, { role: 'Finance' })).status, 403);
+    assert.equal((await patch(userId, admin, { role: 'Director' })).status, 400);
+    assert.equal((await patch(userId, admin, { role: 'Finance' })).status, 204);
+    assert.equal(sessionUser(db, oldToken)?.role, 'Finance');
+    assert.equal((await patch(userId, admin, { role: 'Employee' })).status, 204);
+    assert.equal(sessionUser(db, oldToken)?.role, 'Employee');
     const accounts = await (await get(admin)).json();
     assert.equal(accounts.length, 2);
     assert.equal(JSON.stringify(accounts).includes('password_hash'), false);

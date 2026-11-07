@@ -1,4 +1,4 @@
-import type { AccountDirectoryEntry, IAccountAdministrationRepository } from './repository';
+import type { StaffRole, AccountDirectoryEntry, IAccountAdministrationRepository } from './repository';
 import type { AdminWorkDraft, Company, CompanyId, RequestRecord, UserProfile, ViewingScope, WorkflowConfig } from '../types/index';
 import { ApiError } from './apiTypes';
 import type { ApprovalInput, BootstrapData, DraftState, OverrideInput, ReasonInput, RequestActions, ResubmitInput, SubmitInput, VersionedRequest } from './apiTypes';
@@ -51,7 +51,7 @@ export class ApiPreciSignRepository implements IAccountAdministrationRepository,
     if (!Array.isArray(data)) throw new ApiError(502, 'Invalid account directory response.', 'INVALID_RESPONSE');
     return data;
   }
-  async updateAccount(id: string, update: { email?: string; isDisabled?: boolean }) {
+  async updateAccount(id: string, update: { email?: string; isDisabled?: boolean; role?: StaffRole }) {
     await this.call(`/admin/accounts/${encodeURIComponent(id)}`, 'PATCH', update);
   }
   async updateGrants(id: string, companyIds: CompanyId[], formsByCompany: Partial<Record<CompanyId, string[]>>) {

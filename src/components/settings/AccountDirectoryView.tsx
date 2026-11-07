@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Building2, CheckCircle2, KeyRound, Mail, MoreHorizontal, Search, Shield, SlidersHorizontal, UserRoundCheck, UserRoundMinus, UsersRound, X } from 'lucide-react';
-import type { AccountDirectoryEntry, IAccountAdministrationRepository } from '../../services/repository';
+import type { StaffRole, AccountDirectoryEntry, IAccountAdministrationRepository } from '../../services/repository';
 import type { CompanyId } from '../../types';
 import { INITIAL_COMPANIES } from '../../data/seedData';
 import { companyForms } from '../library/FormsLibraryView';
 
-type Editor = { account: AccountDirectoryEntry; mode: 'access' | 'email' | 'status' | 'reset' };
+type Editor = { account: AccountDirectoryEntry; mode: 'access' | 'email' | 'status' | 'reset' | 'role' };
 type FormGrants = Partial<Record<CompanyId, string[]>>;
 
 const editorTitles = {
   access: 'Manage access',
   email: 'Change sign-in email',
+  role: 'Change staff role',
   status: 'Account status',
   reset: 'Password reset link',
 };
@@ -110,7 +111,7 @@ export function AccountDirectoryView({ repository }: { repository: IAccountAdmin
                 </span>
               </div>
               <p className="mt-1 break-all text-xs text-workspace-muted">{account.email}</p>
-              {account.department && <p className="mt-1 text-xs text-workspace-muted">{account.department}</p>}
+              {account.department && <p className="mt-1 text-xs text-workspace-muted">{account.department} Â· {account.role}</p>}
             </div>
           </div>
           <div className="min-w-0 text-xs">
@@ -137,6 +138,8 @@ export function AccountDirectoryView({ repository }: { repository: IAccountAdmin
               <summary aria-label={`Account actions for ${account.name}`} className="workspace-control preci-icon-button min-h-10 min-w-10"><MoreHorizontal aria-hidden="true" /></summary>
               <div className="preci-popover absolute top-full right-0 z-10 mt-2 w-52 origin-top-right rounded-xl border border-workspace-line bg-white p-1.5 shadow-lg">
                 <button type="button" className="preci-menu-action" disabled={account.companyGrants === null} onClick={event => openEditor(account, 'email', event.currentTarget)}><Mail aria-hidden="true" /> Change email</button>
+                {account.companyGrants !== null && !account.isDisabled && !['Director', 'General Manager'].includes(account.role) &&
+                  <button type="button" className="preci-menu-action" onClick={event => openEditor(account, 'role', event.currentTarget)}><UsersRound aria-hidden="true" /> Change staff role</button>}
                 {!account.isDisabled && <button type="button" className="preci-menu-action" onClick={event => openEditor(account, 'reset', event.currentTarget)}><KeyRound aria-hidden="true" /> Create reset link</button>}
                 <button type="button" className={`preci-menu-action ${account.isDisabled ? '' : 'text-rose-800 hover:bg-rose-50'}`} disabled={account.companyGrants === null} onClick={event => openEditor(account, 'status', event.currentTarget)}>
                   {account.isDisabled ? <UserRoundCheck aria-hidden="true" /> : <UserRoundMinus aria-hidden="true" />}
@@ -165,6 +168,7 @@ function AccountEditor({ editor, repository, onClose, onSaved }: {
   const { account, mode } = editor;
   const dialog = useRef<HTMLDialogElement>(null);
   const [email, setEmail] = useState(account.email);
+  const [role, setRole] = useState<StaffRole | ''>('');
   const [companyIds, setCompanyIds] = useState<CompanyId[]>(account.companyGrants ?? []);
   const [formGrants, setFormGrants] = useState<FormGrants>(account.formGrants ?? {});
   const [resetLink, setResetLink] = useState('');
@@ -200,6 +204,10 @@ function AccountEditor({ editor, repository, onClose, onSaved }: {
       if (mode === 'access') {
         await repository.updateGrants(account.id, companyIds, formGrants);
         onSaved(`Access updated for ${account.name}.`);
+      } else if (mode === 'role') {
+        if (!role) return;
+        await repository.updateAccount(account.id, { role });
+        onSaved(`Staff role updated for ${account.name}.`);
       } else if (mode === 'email') {
         await repository.updateAccount(account.id, { email });
         onSaved(`Sign-in email updated for ${account.name}.`);
@@ -217,7 +225,7 @@ function AccountEditor({ editor, repository, onClose, onSaved }: {
   }
 
   const submitLabel = mode === 'access' ? 'Save access' : mode === 'email' ? 'Save email'
-    : mode === 'reset' ? 'Create reset link' : account.isDisabled ? 'Re-enable account' : 'Disable account';
+    : mode === 'role' ? 'Save role' : mode === 'reset' ? 'Create reset link' : account.isDisabled ? 'Re-enable account' : 'Disable account';
   return <dialog ref={dialog} className="preci-dialog" aria-labelledby="account-editor-title" onCancel={event => {
     event.preventDefault();
     if (!busy) onClose();
@@ -231,6 +239,13 @@ function AccountEditor({ editor, repository, onClose, onSaved }: {
         <button type="button" className="workspace-control preci-icon-button shrink-0" aria-label="Close account editor" disabled={busy} onClick={onClose}><X aria-hidden="true" /></button>
       </header>
       <div className="space-y-4 overflow-y-auto p-4 sm:p-5">
+        {mode === 'role' && <p className="text-sm text-workspace-muted">Employee is the standard role. IT, Finance and Admin processing also require company access and signing-route processing-team assignment. Signing comes from the request assignment. Super admin separately controls account management.</p>}
+        {mode === 'role' && <label className="preci-field">Staff role (currently {account.role})
+          <select className="workspace-control block min-h-10 px-3" value={role} required disabled={busy} onChange={event => setRole(event.target.value as StaffRole | '')}>
+            <option value="">Choose role</option>
+            <option>Employee</option><option value="Admin">Admin processing</option><option>IT</option><option>Finance</option>
+          </select>
+        </label>}
         {mode === 'access' && <>
           <p className="text-sm text-workspace-muted">Choose the companies this employee can access and the forms they can start in each company.</p>
           <fieldset className="space-y-3" disabled={busy}>

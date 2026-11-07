@@ -63,7 +63,10 @@ export interface IPreciSignRepository {
 }
 
 /** Account administration exists only in the connected application. */
+export type StaffRole = 'Employee' | 'Admin' | 'IT' | 'Finance';
+
 export interface AccountDirectoryEntry {
+  role: UserProfile['role'];
   id: string;
   name: string;
   email: string;
@@ -78,7 +81,7 @@ export interface IAccountAdministrationRepository extends IPreciSignRepository {
   listCompanyBranding(): Promise<Company[]>;
   updateCompanyLogo(id: CompanyId, logoDataUrl: string | null): Promise<string | null>;
   listAccounts(): Promise<AccountDirectoryEntry[]>;
-  updateAccount(id: string, update: { email?: string; isDisabled?: boolean }): Promise<void>;
+  updateAccount(id: string, update: { email?: string; isDisabled?: boolean; role?: StaffRole }): Promise<void>;
   updateGrants(id: string, companyIds: CompanyId[], formsByCompany: Partial<Record<CompanyId, string[]>>): Promise<void>;
   createResetLink(id: string): Promise<string>;
 }
