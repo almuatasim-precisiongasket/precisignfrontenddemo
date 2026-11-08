@@ -1,11 +1,12 @@
+import { ReviewSupportingFiles } from './ReviewSupportingFiles';
 import { RndEvaluationPanel } from '../rnd/RndEvaluationPanel';
 import { RndFields } from '../rnd/RndFields';
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { canAdministerWorkflows } from '../../utils/workflowAdministration';
 import { canCompleteWithOutstandingSteps, canProposeFinalReplacement, configuredReplacementIds, usesConfiguredBackups } from '../../utils/routeReplacement';
 import { canUserAccessCompany } from '../../utils/companyAccess';
 import { needsProcessingAction } from '../../utils/routeProcessing';
-import { useApp } from '../../context/AppContext';
+import { useApp, useUnsavedWork } from '../../context/AppContext';
 import { AdminWorkFormData, AttachmentItem } from '../../types/index';
 import { RequestDocument } from '../document/RequestDocument';
 import { RouteProcessingPanel } from './RouteProcessingPanel';
@@ -32,7 +33,6 @@ import {
   Send,
   Eye,
   ShieldAlert,
-  Paperclip,
   RotateCcw,
   History,
   Check,
@@ -72,6 +72,8 @@ export const ReviewSignView: React.FC = () => {
   const [signatureAction, setSignatureAction] = useState<'approve' | 'resubmit' | 'override'>('approve');
   const [actionModal, setActionModal] = useState<'return' | 'reject' | 'cancel' | 'override' | 'resubmit' | null>(null);
   const [actionReason, setActionReason] = useState('');
+  const [signingRemark, setSigningRemark] = useState('');
+  useEffect(() => { setSigningRemark(''); }, [selectedRequestId, currentUser.id]);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [replacementStage, setReplacementStage] = useState('');
@@ -94,6 +96,8 @@ export const ReviewSignView: React.FC = () => {
   const [correctedForm, setCorrectedForm] = useState<AdminWorkFormData>(request ? request.formData : ({} as any));
   const [correctedAttachments, setCorrectedAttachments] = useState<AttachmentItem[]>(request?.attachments || []);
   const [resubmitChangeNote, setResubmitChangeNote] = useState('');
+
+  useUnsavedWork(JSON.stringify({ signingRemark, actionReason: actionModal ? actionReason : '', replacementReason, resubmitChangeNote, correctedForm, files: correctedAttachments.map(file => file.id) }));
 
   if (!request) {
     return (
@@ -159,8 +163,6 @@ export const ReviewSignView: React.FC = () => {
     && canCompleteWithOutstandingSteps(request, currentUser.id);
   const canRespond = request.status === 'Pending Approval' && request.pendingReplacement?.newUserId === currentUser.id;
   const canCorrect = isReturned && isRequester;
-  const actionLabel = canRespond ? 'Respond to assignment' : canCorrect ? 'Review corrections'
-    : canSign ? 'Go to signing' : canOverride ? 'Review completion' : undefined;
   const completionLabel = finalAlreadySigned ? 'Complete request' : 'Sign & complete';
 
   function goToActions() {
@@ -224,6 +226,15 @@ export const ReviewSignView: React.FC = () => {
     }
   };
 
+  const handleSignatureConfirmation = (signature: string, note?: string) => {
+    if (signingRecordTime.current !== request.updatedAt) {
+      return Promise.resolve({ success: false, error: 'The route changed. Close this dialog and review the current document before signing again.' });
+    }
+    if (signatureAction === 'resubmit') return handleResubmitSubmit(signature);
+    if (signatureAction === 'override') return handleFinalRouteCompletionSubmit(signature);
+    return handleConfirmedApproval(signature, note);
+  };
+
   const handleApproveClick = () => {
     setActionError(null);
     if (!canSign || !onLatestVersion) {
@@ -237,6 +248,7 @@ export const ReviewSignView: React.FC = () => {
   const handleConfirmedApproval = async (signatureDataUrl: string, note?: string) => {
     const result = await approveRequest(request.id, note, signatureDataUrl);
     if (result.success) {
+      setSigningRemark('');
       setActionSuccess(isFinalApprover && outstanding.length ? 'You signed. The request stays open for the other signers.' : 'Signature saved.');
       setTimeout(() => setActionSuccess(null), 3500);
     } else {
@@ -283,7 +295,7 @@ export const ReviewSignView: React.FC = () => {
     }
   };
 
-  const handleDirectorOverrideSubmit = async (signatureDataUrl: string) => {
+  const handleFinalRouteCompletionSubmit = async (signatureDataUrl: string) => {
     if (savingReason.current) return { success: false, error: "Save already in progress." };
     if (!actionReason.trim()) {
       setActionError('A reason is required to bypass outstanding signers.');
@@ -370,7 +382,7 @@ export const ReviewSignView: React.FC = () => {
         {/* Mobile Tab Switcher */}
         <div role="group" aria-label="Review view" className="lg:hidden flex border border-[#E2E5E9] bg-white rounded-md p-0.5 text-xs w-full sm:w-auto">
           <button
-            onClick={() => setMobileViewTab('document')}
+            onClick={() => { setMobileViewTab('document'); document.getElementById('review-document')?.scrollIntoView({ block: 'start' }); }}
             aria-pressed={mobileViewTab === 'document'}
             className={`min-h-10 flex-1 sm:flex-none px-3 py-1.5 font-semibold rounded transition-colors ${
               mobileViewTab === 'document' ? 'bg-[#365C78] text-white shadow-xs' : 'text-slate-600'
@@ -379,13 +391,13 @@ export const ReviewSignView: React.FC = () => {
             Document
           </button>
           <button
-            onClick={() => setMobileViewTab('sidebar')}
+            onClick={goToActions}
             aria-pressed={mobileViewTab === 'sidebar'}
             className={`min-h-10 flex-1 sm:flex-none px-3 py-1.5 font-semibold rounded transition-colors ${
               mobileViewTab === 'sidebar' ? 'bg-[#365C78] text-white shadow-xs' : 'text-slate-600'
             }`}
           >
-            Actions & history
+            Go to actions
           </button>
         </div>
       </div>
@@ -420,8 +432,6 @@ export const ReviewSignView: React.FC = () => {
         <DocuSignProgressBanner
           request={request}
           currentUserId={currentUser.id}
-          actionLabel={actionLabel}
-          onAction={goToActions}
         />
       </div>
 
@@ -434,9 +444,9 @@ export const ReviewSignView: React.FC = () => {
       {/* Split Layout: 62% Document Focus + 38% Actions & history on Desktop */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* ================= LEFT: ORIGINAL A4 DOCUMENT (62%) ================= */}
-        <div
-          className={`lg:col-span-7 xl:col-span-8 space-y-3 ${
-            mobileViewTab === 'sidebar' ? 'hidden lg:block' : 'block'
+        <div id="review-document"
+          className={`lg:col-span-7 xl:col-span-8 space-y-3 scroll-mt-24 ${
+            'block'
           }`}
         >
           {/* Document Controls Strip: Version Tabs + Zoom + Fullscreen + Print */}
@@ -550,7 +560,7 @@ export const ReviewSignView: React.FC = () => {
         {/* ================= RIGHT: APPROVAL & AUDIT CONTROLS (38%) ================= */}
         <div
           className={`lg:col-span-5 xl:col-span-4 space-y-4 no-print ${
-            mobileViewTab === 'document' ? 'hidden lg:block' : 'block'
+            'block'
           }`}
         >
           {request.formData.rnd && onLatestVersion && <RndEvaluationPanel key={`${request.id}:${request.documentVersion}:${request.approvalSteps.at(-1)?.assignedUserId}`} request={request} />}
@@ -575,8 +585,13 @@ export const ReviewSignView: React.FC = () => {
                   : 'You can sign now. The request stays open for the other signers.'}
                 {canOverride && ' To finish early, give a reason for bypassing their signatures.'}
               </p>}
+              {canSign && <label className="block space-y-1 text-xs">
+                <span className="font-semibold">Signer remarks (optional)</span>
+                <textarea className="workspace-control min-h-20 w-full p-2" value={signingRemark} maxLength={2000} onChange={event => setSigningRemark(event.target.value)} placeholder="Add a remark for the signing history" />
+                <span className="block text-workspace-muted">Saved with Approve & sign in the request history, outside the form.</span>
+              </label>}
               {canSign && <button type="button" onClick={handleApproveClick} className="workspace-primary flex min-h-10 w-full items-center justify-center gap-2 px-3 text-xs">
-                <Check aria-hidden="true" className="size-4" />{canOverride ? 'Sign and keep open' : 'Sign'}
+                <Check aria-hidden="true" className="size-4" />{canOverride ? 'Approve & sign · keep open' : 'Approve & sign'}
               </button>}
               {canOverride && <button type="button" onClick={() => openAction('override')} className={`${finalAlreadySigned ? 'workspace-primary' : 'workspace-control'} min-h-10 w-full px-3 text-xs font-semibold`}>{completionLabel}</button>}
               <div className="flex flex-wrap gap-2">
@@ -656,53 +671,14 @@ export const ReviewSignView: React.FC = () => {
               </div>
             </details>}
           {/* 2. Detailed Approval Journey & Audit Log */}
-          <ApprovalJourneyPanel
+          {!onLatestVersion && <p className="text-xs text-workspace-muted">Showing document version {selectedVersion}. The history below contains activity across versions; the progress summary above shows the latest route.</p>}
+          <ApprovalJourneyPanel historyOnly
             request={request}
             currentUserId={currentUser.id}
           />
 
           {/* 3. Supporting Document Attachments */}
-          <div className="workspace-panel overflow-hidden">
-            <div className="px-4 py-3 border-b border-[#E2E5E9] bg-[#F9FAFB] flex items-center justify-between">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#192B3C] flex items-center gap-1.5">
-                <Paperclip className="w-3.5 h-3.5 text-[#365C78]" />
-                <span>Supporting Files ({visibleAttachments?.length ?? 0})</span>
-              </h3>
-              <span className="text-[10px] text-slate-400">Attachments</span>
-            </div>
-
-            <div className="p-4">
-              <div className="space-y-2 max-h-56 overflow-y-auto">
-                {!visibleAttachments ? (
-                  <div className="text-center py-4 text-xs text-slate-400">Attachments for this version are unavailable.</div>
-                ) : visibleAttachments.length === 0 ? (
-                  <div className="text-center py-4 text-xs text-slate-400">
-                    No attachments uploaded for this request.
-                  </div>
-                ) : (
-                  visibleAttachments.map((att) => (
-                    <div
-                      key={att.id}
-                      className="flex items-center justify-between p-2 rounded border border-[#E2E5E9] bg-[#F5F6F8] text-xs"
-                    >
-                      <div className="flex items-center gap-2 truncate pr-2">
-                        <Paperclip className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                        <span className="font-medium text-[#192B3C] truncate">{att.name}</span>
-                        <span className="text-[10px] text-slate-400">({att.sizeFormatted})</span>
-                      </div>
-                      <button
-                        onClick={() => handleDownloadAttachment(att)}
-                        className="p-1 text-slate-500 hover:text-[#365C78] rounded hover:bg-slate-200"
-                        title="Download attachment"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
+          <ReviewSupportingFiles attachments={visibleAttachments} onDownload={handleDownloadAttachment} />
         </div>
       </div>
 
@@ -821,7 +797,7 @@ export const ReviewSignView: React.FC = () => {
                   return;
                 }
                 setActionError(null);
-                if (finalAlreadySigned) void handleDirectorOverrideSubmit('');
+                if (finalAlreadySigned) void handleFinalRouteCompletionSubmit('');
                 else {
                   setSignatureAction('override');
                   signingRecordTime.current = request.updatedAt;
@@ -971,10 +947,10 @@ export const ReviewSignView: React.FC = () => {
           isOpen={signatureModalOpen}
           onClose={() => setSignatureModalOpen(false)}
           user={currentUser}
-          title={signatureAction === 'resubmit' ? 'Sign corrected request' : signatureAction === 'override' ? 'Sign & complete' : 'Sign request'}
-          confirmLabel={signatureAction === 'override' ? 'Sign & complete' : 'Save signature'}
-          noteLabel={signatureAction === 'approve' ? 'Signing remark' : undefined}
-          onConfirm={(signature, note) => { if (signingRecordTime.current !== request.updatedAt) return Promise.resolve({ success: false, error: 'The route changed. Close this dialog and review the current document before signing again.' }); return signatureAction === 'resubmit' ? handleResubmitSubmit(signature) : signatureAction === 'override' ? handleDirectorOverrideSubmit(signature) : handleConfirmedApproval(signature, note); }}
+          reviewContext={{ version: request.documentVersion, responsibility: signatureAction === 'resubmit' ? 'Requester' : isFinalApprover ? 'Final approver' : currentStep?.stageName || 'Assigned signer' }}
+          title={signatureAction === 'resubmit' ? 'Sign corrected request' : signatureAction === 'override' ? 'Sign & complete' : 'Approve & sign'}
+          confirmLabel={signatureAction === 'override' ? 'Sign & complete' : 'Confirm & sign'}
+          onConfirm={(signature) => handleSignatureConfirmation(signature, signatureAction === 'approve' ? signingRemark.trim() || undefined : undefined)}
         />
       )}
 

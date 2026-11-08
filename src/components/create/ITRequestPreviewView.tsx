@@ -3,7 +3,7 @@ import { EditorViewToggle } from './EditorViewToggle';
 import { useFieldErrors } from './useFieldErrors';
 import { useState } from 'react';
 import { ArrowLeft, Printer } from 'lucide-react';
-import { useApp } from '../../context/AppContext';
+import { useApp, useUnsavedWork } from '../../context/AppContext';
 import type { CompanyId, PriorityLevel } from '../../types';
 import { canUserStartForm } from '../../utils/companyAccess';
 import { ITRequestDocument, type ITRequestFields } from '../document/ITRequestDocument';
@@ -36,6 +36,8 @@ export function ITRequestPreviewView({ onBack }: { onBack: () => void }) {
     details: '',
     justification: '',
   }));
+
+  useUnsavedWork(JSON.stringify({ fields, choices, companyId }));
 
   function update<K extends keyof ITRequestFields>(field: K, value: ITRequestFields[K]) {
     setFields(previous => ({ ...previous, [field]: value }));

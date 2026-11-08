@@ -12,7 +12,7 @@ export function ShowcaseBar() {
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-start gap-2"><FlaskConical aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-teal-800" /><div><p className="text-xs font-bold text-teal-950">PreciSign showcase</p><p className="text-xs text-teal-900">Dont Worry Chap , We are in DEMO mode now !</p></div></div>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <label className="text-xs font-semibold text-teal-950">Try as <select aria-label="Demo employee" value={currentUser.id} className="workspace-control ml-2 min-h-10 max-w-[215px] bg-white px-2 text-xs" onChange={event => { setCurrentUserId(event.target.value); setActiveView('dashboard'); }}>
+        <label className="text-xs font-semibold text-teal-950">Try as <select aria-label="Demo employee" value={currentUser.id} className="workspace-control ml-2 min-h-10 max-w-[215px] bg-white px-2 text-xs" onChange={event => { setCurrentUserId(event.target.value); }}>
           {users.map(user => <option key={user.id} value={user.id}>{user.name} · {user.isSuperAdmin ? 'Administrator' : user.role}</option>)}
         </select></label>
         <button type="button" className="workspace-control inline-flex min-h-10 items-center gap-1.5 bg-white px-3 text-xs font-semibold" onClick={() => { setConfirm(true); setError(''); }}><RotateCcw aria-hidden="true" className="size-3.5" /> Reset demo</button>

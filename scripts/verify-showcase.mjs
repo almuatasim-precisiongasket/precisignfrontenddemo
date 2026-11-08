@@ -25,8 +25,8 @@ try {
   const pending = initial.find(record => record.formType === 'Administrative & Payment Request');
   await page.getByLabel('Search all requests').fill(pending.id);
   await page.getByRole('button').filter({ hasText: pending.id }).first().click();
-  await page.getByRole('button', { name: 'Sign', exact: true }).click();
-  await page.getByRole('button', { name: 'Save signature', exact: true }).click();
+  await page.getByRole('button', { name: 'Approve & sign', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm & sign', exact: true }).click();
   await page.getByText('Signing completed', { exact: true }).first().waitFor();
   await page.reload();
   if ((await records()).find(record => record.id === pending.id)?.status !== 'Approved') throw new Error('Signature was not saved across refresh.');

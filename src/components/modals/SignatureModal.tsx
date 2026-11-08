@@ -10,6 +10,7 @@ interface SignatureModalProps {
   title?: string;
   confirmLabel?: string;
   noteLabel?: string;
+  reviewContext?: { version: number; responsibility: string };
   onConfirm: (signatureDataUrl: string, note?: string) => Promise<{ success: boolean; error?: string } | undefined>;
 }
 
@@ -20,9 +21,10 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
   title = 'Confirm Digital E-Signature',
   confirmLabel = 'Confirm & Apply Signature',
   noteLabel,
+  reviewContext,
   onConfirm,
 }) => {
-  const [tab, setTab] = useState<'style' | 'draw' | 'upload'>('style');
+  const [tab, setTab] = useState<'style' | 'draw' | 'upload' | 'saved'>('style');
   const [styledName, setStyledName] = useState(user.name);
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState('');
@@ -37,6 +39,8 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setStyledName(user.name);
+      setSignatureError(null);
+      if (reviewContext) setTab(user.signatureDataUrl ? 'saved' : 'style');
     }
   }, [isOpen, user]);
 
@@ -119,13 +123,15 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
 
   const handleSaveAndConfirm = async () => {
     if (savingRef.current) return;
-    if ((tab === 'style' && !styledName.trim()) || (tab === 'draw' && !drawnDataUrl) || (tab === 'upload' && !uploadedDataUrl)) {
+    if ((tab === 'saved' && !user.signatureDataUrl) || (tab === 'style' && !styledName.trim()) || (tab === 'draw' && !drawnDataUrl) || (tab === 'upload' && !uploadedDataUrl)) {
       setSignatureError('Please provide a signature using the selected method.');
       return;
     }
     setSignatureError(null);
     let finalDataUrl = '';
-    if (tab === 'draw' && drawnDataUrl) {
+    if (tab === 'saved' && user.signatureDataUrl) {
+      finalDataUrl = user.signatureDataUrl;
+    } else if (tab === 'draw' && drawnDataUrl) {
       finalDataUrl = drawnDataUrl;
     } else if (tab === 'upload' && uploadedDataUrl) {
       finalDataUrl = uploadedDataUrl;
@@ -144,7 +150,7 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
   };
 
   return (
-    <WorkspaceDialog titleId="signature-dialog-title" onClose={onClose} busy={saving} className="max-w-lg">
+    <WorkspaceDialog titleId="signature-dialog-title" onClose={onClose} busy={saving} className="max-w-lg overscroll-contain">
       <div className="w-full">
         {/* Header */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-[#E2E5E9] bg-[#F5F6F8]">
@@ -166,8 +172,10 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
           </button>
         </div>
 
+        {reviewContext && <div className="px-4 py-3 sm:px-6 text-xs border-b border-workspace-line"><p className="font-semibold">{user.name} · {reviewContext.responsibility}</p><p className="mt-1 text-workspace-muted">Document version {reviewContext.version}. Your signature is recorded only after the save succeeds.</p></div>}
         {/* Tab selection */}
         <fieldset disabled={saving} className="flex border-b border-[#E2E5E9] px-4 sm:px-6 pt-2.5 sm:pt-3 bg-white overflow-x-auto">
+          {reviewContext && user.signatureDataUrl && <button type="button" aria-pressed={tab === 'saved'} onClick={() => setTab('saved')} className={`min-h-10 border-b-2 px-3 text-xs font-semibold ${tab === 'saved' ? 'border-workspace-teal text-workspace-teal' : 'border-transparent text-workspace-muted'}`}>Saved signature</button>}
           <button
             type="button"
             aria-pressed={tab === 'style'}
@@ -212,6 +220,7 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
         {/* Content */}
         <fieldset disabled={saving} className="p-6 space-y-4">
           {signatureError && <p role="alert" className="text-xs text-rose-700">{signatureError}</p>}
+          {tab === 'saved' && user.signatureDataUrl && <div className="rounded-lg border border-workspace-line bg-workspace p-4"><p className="mb-3 text-xs font-medium">Your saved signature</p><img src={user.signatureDataUrl} alt={`Saved signature for ${user.name}`} className="mx-auto h-20 max-w-full object-contain" /></div>}
           {tab === 'style' && (
             <div className="space-y-3">
               <label className="block text-xs font-medium text-slate-700">

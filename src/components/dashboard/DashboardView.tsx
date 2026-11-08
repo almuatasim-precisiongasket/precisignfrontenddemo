@@ -1,3 +1,4 @@
+import { filterDashboardRequests } from '../../utils/dashboardFilters';
 import { isShowcaseBuild } from '../../config/demo';
 import { getInitials } from '../../utils/approvalJourney';
 import { needsMyAction } from '../../utils/actionQueue';
@@ -134,49 +135,9 @@ export const DashboardView: React.FC = () => {
   }
 
   // Filter & sort requests for the operational table
-  const filteredRequests = useMemo(() => {
-    let list: RequestRecord[] = [];
-    if (internalTab === 'pending') {
-      list = pendingForMeRequests;
-    } else if (internalTab === 'my') {
-      list = myRequests;
-    } else if (internalTab === 'returned') {
-      list = returnedRequests;
-    } else if (internalTab === 'approved') {
-      list = approvedRequests;
-    } else {
-      list = companyRequests;
-    }
-
-    list = list.filter(r => (formFilter === 'ALL' || r.formType === formFilter) && (statusFilter === 'ALL' || r.status === statusFilter));
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      list = list.filter(
-        (r) =>
-          r.id.toLowerCase().includes(q) ||
-          r.formType.toLowerCase().includes(q) ||
-          r.requesterName.toLowerCase().includes(q) ||
-          r.title.toLowerCase().includes(q) ||
-          r.formData.workDescription.toLowerCase().includes(q) ||
-          (r.currentApproverName && r.currentApproverName.toLowerCase().includes(q))
-      );
-    }
-
-    // Sort list
-    const sorted = [...list];
-    if (sortBy === 'date-desc') {
-      sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    } else if (sortBy === 'date-asc') {
-      sorted.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    } else if (sortBy === 'priority') {
-      const order: Record<PriorityLevel, number> = { Urgent: 0, Medium: 1, Low: 2 };
-      sorted.sort((a, b) => order[a.formData.priority] - order[b.formData.priority]);
-    } else if (sortBy === 'id') {
-      sorted.sort((a, b) => a.id.localeCompare(b.id));
-    }
-
-    return sorted;
-  }, [internalTab, pendingForMeRequests, myRequests, returnedRequests, approvedRequests, companyRequests, searchQuery, sortBy, formFilter, statusFilter]);
+  const filteredRequests = useMemo(() => filterDashboardRequests({
+    internalTab, pendingForMeRequests, myRequests, returnedRequests, approvedRequests, companyRequests, searchQuery, sortBy, formFilter, statusFilter
+  }), [internalTab, pendingForMeRequests, myRequests, returnedRequests, approvedRequests, companyRequests, searchQuery, sortBy, formFilter, statusFilter]);
 
   const isRecentView = activeView === 'dashboard' && internalTab === 'all' && !hasFilters && sortBy === 'date-desc';
   const displayedRequests = isRecentView ? filteredRequests.slice(0, 5) : filteredRequests;

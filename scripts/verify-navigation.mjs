@@ -1,0 +1,68 @@
+import { chromium } from 'playwright-core';
+import assert from 'node:assert/strict';
+const base = process.env.SHOWCASE_URL || 'http://127.0.0.1:3198';
+if (!['127.0.0.1','localhost'].includes(new URL(base).hostname)) throw Error('Use an isolated local demo only.');
+const browser = await chromium.launch({ channel: process.platform === 'win32' ? 'msedge' : undefined, headless: true });
+try {
+ const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+ const page = await context.newPage(); page.setDefaultTimeout(8000);
+ const errors = []; page.on('pageerror', e => errors.push(e.message));
+ await page.goto(base + '/forms'); await page.getByRole('heading', { name: 'Forms Library', exact: true }).waitFor();
+ const beforeRepeat = await page.evaluate(() => history.length);
+ await page.getByRole('button', { name: 'Forms Library', exact: true }).click();
+ assert.equal(await page.evaluate(() => history.length), beforeRepeat);
+ await page.getByRole('button', { name: 'Overview', exact: true }).click(); await page.waitForURL('**/dashboard');
+ await page.goBack(); await page.getByRole('heading', { name: 'Forms Library', exact: true }).waitFor();
+ await page.goForward(); await page.waitForURL('**/dashboard');
+ await page.getByRole('navigation', { name: 'Workspace navigation' }).getByRole('button', { name: /^All routes/ }).click(); await page.waitForURL('**/requests?filter=all');
+ await page.reload(); await page.waitForURL('**/requests?filter=all');
+ const request = await page.evaluate(async () => (await (await import('/src/services/repository.ts')).dataService.getRequests()).find(r => r.formType === 'Administrative & Payment Request' && r.status === 'Pending Approval'));
+ assert.ok(request);
+ await page.goto(base + '/requests/' + encodeURIComponent(request.id));
+ await page.getByRole('heading', { name: 'Request actions', exact: true }).waitFor();
+ await page.reload(); await page.getByRole('heading', { name: 'Request actions', exact: true }).waitFor();
+ const remark = page.getByRole('textbox', { name: 'Signer remarks (optional)' }); await remark.fill('Synthetic navigation remark');
+ await page.getByRole('button', { name: 'Forms Library', exact: true }).click();
+ await page.getByRole('dialog').getByRole('button', { name: 'Stay', exact: true }).click();
+ assert.equal(await remark.inputValue(), 'Synthetic navigation remark');
+ await page.getByRole('button', { name: 'Forms Library', exact: true }).click();
+ await page.getByRole('dialog').getByRole('button', { name: 'Leave', exact: true }).click();
+ await page.waitForURL('**/forms');
+ await page.goto(base + '/rnd'); await page.getByRole('heading', { name: 'R&D Initiative', exact: true }).waitFor();
+ // Use the actual R&D field, excluding the shell search input.
+ const input = page.locator('main input:not([type="checkbox"]):not([type="date"])').first(); await input.fill('Synthetic R&D navigation test');
+ page.once('dialog', dialog => { assert.equal(dialog.type(), 'beforeunload'); void dialog.dismiss(); });
+ await page.reload().catch(() => {});
+ await page.getByRole('button', { name: 'Forms Library', exact: true }).click();
+ await page.getByRole('dialog').getByRole('button', { name: 'Stay', exact: true }).click();
+ assert.equal(await input.inputValue(), 'Synthetic R&D navigation test');
+ await page.getByRole('button', { name: 'Forms Library', exact: true }).click();
+ await page.getByRole('dialog').getByRole('button', { name: 'Leave', exact: true }).click(); await page.waitForURL('**/forms');
+ await page.getByRole('button', { name: 'Overview', exact: true }).click(); await page.waitForURL('**/dashboard');
+ await page.goBack(); await page.waitForURL('**/forms');
+ await page.goto(base + '/forms');
+ await page.getByRole('button', { name: 'Open form: R&D Initiative', exact: true }).click();
+ await page.waitForURL('**/forms/rnd/new');
+ const backInput = page.locator('main input:not([type="checkbox"]):not([type="date"])').first();
+ await backInput.fill('Keep this during Back');
+ await page.goBack();
+ await page.getByRole('dialog').getByRole('button', { name: 'Stay', exact: true }).click();
+ await page.waitForURL('**/forms/rnd/new'); assert.equal(await backInput.inputValue(), 'Keep this during Back');
+ await page.goBack(); await page.getByRole('dialog').getByRole('button', { name: 'Leave', exact: true }).click();
+ await page.waitForURL('**/forms');
+ await page.goForward(); await page.waitForURL('**/forms/rnd/new');
+ await page.goto(base + '/not-a-page'); await page.getByRole('heading', { name: 'Page not found', exact: true }).waitFor();
+ await page.goto(base + '/requests/not-a-real-record'); await page.getByRole('heading', { name: 'Request unavailable', exact: true }).waitFor();
+ await page.goto(base + '/settings/users'); await page.getByRole('heading', { name: 'Page unavailable', exact: true }).waitFor();
+ await page.setViewportSize({ width: 390, height: 844 }); await page.goto(base + '/forms');
+ await page.getByRole('heading', { name: 'Forms Library', exact: true }).waitFor();
+ assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+ await page.setViewportSize({ width: 1280, height: 900 });
+ await page.getByLabel('Demo employee').selectOption('showcase-user-5');
+ await page.waitForURL('**/dashboard');
+ for (const [path, heading] of [['/settings/users','User directory'], ['/settings/branding','Company branding'], ['/settings/signing-routes','Signing routes']]) {
+   await page.goto(base + path); await page.getByRole('heading', { name: heading, exact: true }).waitFor();
+ }
+ assert.deepEqual(errors, []);
+ console.log('PASS: page URLs, refresh, history, request lookup, remarks/editor guards, rnd alias, unavailable routes and narrow layout.');
+} finally { await browser.close(); }

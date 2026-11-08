@@ -2,12 +2,12 @@
 export const rndDocumentTemplate = `<section class="a4-sheet" aria-label="A4 Page 1">
       <div class="page-outer-frame">
 
-
+        
         <header class="doc-header">
           <div class="brand-row">
             <div class="brand-logo-wrap">
               {{companyLogo}}
-
+              
             </div>
             <div class="brand-title-block">
               <div class="company-name">{{companyName}}</div>
@@ -19,7 +19,7 @@ export const rndDocumentTemplate = `<section class="a4-sheet" aria-label="A4 Pag
           </div>
         </header>
 
-
+        
         <div class="sec-banner first-banner">
           <span>A. Submission Details</span>
         </div>
@@ -62,12 +62,12 @@ export const rndDocumentTemplate = `<section class="a4-sheet" aria-label="A4 Pag
           </tbody>
         </table>
 
-
+        
         <div class="sec-banner">
           <span>B. Problem Description</span>
         </div>
 
-
+        
         <div class="q-block">
           <div class="q-title">1. Describe the problem or challenge.</div>
           <div class="q-sub">Explain what happens, where it occurs, and which process or activity is affected.</div>
@@ -77,7 +77,7 @@ export const rndDocumentTemplate = `<section class="a4-sheet" aria-label="A4 Pag
           </div>
         </div>
 
-
+        
         <div class="q-block">
           <div class="q-title">2. Describe an actual scenario or recent example.</div>
           <div class="q-sub">Include the circumstances and consequences of the problem.</div>
@@ -87,7 +87,7 @@ export const rndDocumentTemplate = `<section class="a4-sheet" aria-label="A4 Pag
           </div>
         </div>
 
-
+        
         <div class="q-block">
           <div class="q-title">3. How frequently does it occur, and is it recurring?</div>
           <div class="opt-flow" style="margin-top:0.25mm;">
@@ -107,24 +107,24 @@ export const rndDocumentTemplate = `<section class="a4-sheet" aria-label="A4 Pag
           </div>
         </div>
 
-
+        
         <div class="q-block no-bottom">
           <div class="q-title">4. How long has the problem existed?</div>
           <div class="opt-flow" style="margin-top:0.25mm;">{{docQ4Dur}}</div>
         </div>
 
-
+        
         <div class="sec-banner">
           <span>C. Business Impact</span>
         </div>
 
-
+        
         <div class="q-block">
           <div class="q-title">5. What areas are affected? <span class="q-normal">(Select all applicable)</span></div>
           <div class="doc-chk-grid-3">{{docQ5Areas}}</div>
         </div>
 
-
+        
         <div class="q-block no-bottom" style="padding:0.9mm 0 0 0;">
           <div class="q-title" style="padding:0 2.8mm 0.6mm;">6. Estimate the impact, wherever possible.</div>
           <table class="doc-table" style="border-top:var(--cell-border);">
@@ -160,12 +160,12 @@ export const rndDocumentTemplate = `<section class="a4-sheet" aria-label="A4 Pag
           <div class="table-footnote">Approximate figures or descriptions are acceptable.</div>
         </div>
 
-
+        
         <div class="sec-banner">
           <span>D. Existing Solutions and Market Research</span>
         </div>
 
-
+        
         <div class="q-block">
           <div class="q-title">7. How is the problem currently managed or addressed?</div>
           <div class="response-wrap">
@@ -174,7 +174,7 @@ export const rndDocumentTemplate = `<section class="a4-sheet" aria-label="A4 Pag
           </div>
         </div>
 
-
+        
         <div class="q-block" style="padding-bottom:0;">
           <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:2mm;">
             <div class="q-title">8. Are ready-made solutions available in the market?</div>
@@ -193,7 +193,7 @@ export const rndDocumentTemplate = `<section class="a4-sheet" aria-label="A4 Pag
           </table>
         </div>
 
-
+        
         <div class="q-block">
           <div class="q-title">9. If solutions exist, why are they not being adopted?</div>
           <div class="doc-chk-grid-3">{{docQ9Barriers}}</div>
@@ -203,7 +203,7 @@ export const rndDocumentTemplate = `<section class="a4-sheet" aria-label="A4 Pag
           </div>
         </div>
 
-
+        
         <div class="q-block no-bottom">
           <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:2mm;">
             <div class="q-title">10. Have previous solutions been attempted?</div>
@@ -215,7 +215,7 @@ export const rndDocumentTemplate = `<section class="a4-sheet" aria-label="A4 Pag
           </div>
         </div>
 
-
+        
         <div></div>
 
       </div>
@@ -228,11 +228,11 @@ export const rndDocumentTemplate = `<section class="a4-sheet" aria-label="A4 Pag
 <section class="a4-sheet" aria-label="A4 Page 2">
       <div class="page-outer-frame">
 
-
+        
         <div class="page2-running-header">
           <div class="running-brand">
             {{companyLogo}}
-
+            
             <span>{{companyName}} | R&amp;D Initiative – Problem Identification and Submission Form</span>
           </div>
           <span>Ref: <strong>{{runningRefDisplay}}</strong></span>
@@ -240,12 +240,12 @@ export const rndDocumentTemplate = `<section class="a4-sheet" aria-label="A4 Pag
 
         <div style="display:flex; flex-direction:column; flex:1;">
 
-
+          
           <div class="sec-banner first-banner">
             <span>E. Proposed Solution and Improvement Opportunities</span>
           </div>
 
-
+          
           <div class="q-block">
             <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:2mm;">
               <div class="q-title">11. Do you have a proposed solution or improvement idea?</div>
@@ -257,19 +257,19 @@ export const rndDocumentTemplate = `<section class="a4-sheet" aria-label="A4 Pag
             </div>
           </div>
 
-
+          
           <div class="q-block">
             <div class="q-title">12. What should an ideal solution achieve?</div>
             <div class="doc-chk-grid-3">{{docQ12Goals}}</div>
           </div>
 
-
+          
           <div class="q-block no-bottom">
             <div class="q-title">13. Which areas could help solve this problem?</div>
             <div class="doc-chk-grid-3">{{docQ13Domains}}</div>
           </div>
 
-
+          
           <div class="sec-banner">
             <span>F. Supporting Information</span>
           </div>
@@ -278,7 +278,7 @@ export const rndDocumentTemplate = `<section class="a4-sheet" aria-label="A4 Pag
             <div class="doc-chk-grid-3">{{docFAttach}}</div>
           </div>
 
-
+          
           <div class="sec-banner">
             <span>G. Submitter&#x27;s Confirmation</span>
           </div>
@@ -307,7 +307,7 @@ export const rndDocumentTemplate = `<section class="a4-sheet" aria-label="A4 Pag
 
           <hr class="section-hr-rule">
 
-
+          
           <div class="sec-banner" style="border-top:none;">
             <span>H. R&amp;D Team Evaluation – Internal Use Only</span>
           </div>

@@ -1,3 +1,5 @@
+import { usePageNavigation } from '../navigation/usePageNavigation';
+import type { PageView } from '../navigation/pageRoutes';
 import { isShowcaseBuild } from '../config/demo';
 import { activeDemoDataset } from '../data/demoDataset';
 import { canReadPreciRoute } from '../utils/routeAccess';
@@ -46,30 +48,11 @@ interface AppContextType {
   saveWorkflow: (updated: WorkflowConfig) => Promise<WorkflowConfig>;
   
   // Navigation
-  activeView:
-    | 'dashboard'
-    | 'create-request'
-    | 'review-sign'
-    | 'requests'
-    | 'workflow-settings'
-    | 'user-profile'
-    | 'user-directory'
-    | 'company-branding'
-    | 'forms-library'
-    | 'archive';
-  setActiveView: (
-    view:
-      | 'dashboard'
-      | 'create-request'
-      | 'review-sign'
-      | 'requests'
-      | 'workflow-settings'
-      | 'user-profile'
-      | 'user-directory'
-      | 'company-branding'
-      | 'forms-library'
-      | 'archive'
-  ) => void;
+  activeView: PageView;
+  setActiveView: (view: PageView) => void;
+  navigationPrompt: { stay: () => void; leave: () => void } | null;
+  setUnsavedWork: (key: symbol, dirty: boolean) => void;
+  requestRouteStatus: 'loading' | 'ready' | 'unavailable';
   isMobileSidebarOpen: boolean;
   setIsMobileSidebarOpen: (open: boolean) => void;
   requestsFilter: 'pending' | 'my' | 'all' | 'approved';
@@ -156,37 +139,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
   const [initialLoaded, setInitialLoaded] = useState(readOnly);
   const [initialError, setInitialError] = useState<string | null>(null);
 
-  const [activeView, setActiveView] = useState<
-    | 'dashboard'
-    | 'create-request'
-    | 'review-sign'
-    | 'requests'
-    | 'workflow-settings'
-    | 'user-profile'
-    | 'user-directory'
-    | 'company-branding'
-    | 'forms-library'
-    | 'archive'
-  >(() => isShowcaseBuild && window.location.pathname === '/rnd' ? 'create-request' : 'dashboard');
+  const navigation = usePageNavigation();
+  const activeView = navigation.route.view;
+  const setActiveView = navigation.setActiveView;
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [requestsFilter, setRequestsFilter] = useState<'pending' | 'my' | 'all' | 'approved'>('pending');
-
-  const [selectedRequestId, setSelectedRequestId] = useState<string | null>('PEW-AW-2026-0018');
-  const [selectedRequestFormType, setSelectedRequestFormType] = useState<string>(() => isShowcaseBuild && window.location.pathname === '/rnd' ? 'R&D Initiative' : 'Admin Work Request');
+  const requestsFilter = navigation.selectedFilter;
+  const setRequestsFilter = navigation.setFilter;
+  const selectedRequestId = navigation.route.requestId || null;
+  const selectedRequestFormType = navigation.selectedForm;
+  const setSelectedRequestFormType = navigation.setForm;
   useEffect(() => { if (selectedScope === 'PEG') setGroupDraftCompany(null); }, [selectedRequestFormType, selectedScope]);
-  const handlingHistory = useRef(false);
-  useEffect(() => {
-    if (!isShowcaseBuild) return;
-    const onPop = () => { handlingHistory.current = true; if (window.location.pathname === '/rnd') { setSelectedRequestFormType('R&D Initiative'); setActiveView('create-request'); } else setActiveView('dashboard'); };
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
-  }, []);
-  useEffect(() => {
-    if (!isShowcaseBuild) return;
-    if (handlingHistory.current) { handlingHistory.current = false; return; }
-    const path = activeView === 'create-request' && selectedRequestFormType === 'R&D Initiative' ? '/rnd' : '/';
-    if (window.location.pathname !== path) window.history.pushState(null, '', path);
-  }, [activeView, selectedRequestFormType]);
 
   // The directory reads live grants. Refresh the workspace snapshot on browsing
   // screens so those same grants drive form visibility without a new sign-in.
@@ -279,23 +241,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
     return () => { cancelled = true; };
   }, [initialLoaded, selectedScope, currentUserId, draftRetry, draftCompanyId, draftCoordinator, users]);
 
-  const setSelectedScope = (scope: ViewingScope) => {
+  const setSelectedScope = (scope: ViewingScope) => navigation.runGuarded(() => {
     setSelectedScopeState(scope);
     if (scope === 'PEG') setGroupDraftCompany(null);
     if (!readOnly) void dataService.saveDemoSession(scope, currentUserId).catch(console.error);
-
-  };
+  });
 
   const setSelectedCompanyId = (id: ViewingScope) => {
     setSelectedScope(id);
   };
 
-  const setCurrentUserId = (id: string) => {
+  const setCurrentUserId = (id: string) => navigation.runGuarded(() => {
     if (readOnly) return;
     setCurrentUserIdState(id);
     void dataService.saveDemoSession(selectedScope, id).catch(console.error);
-
-  };
+    setActiveView('dashboard');
+  });
 
   const updateUserSignature = async (
     userId: string,
@@ -390,10 +351,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
     if (activeDraftKey.current === key) setDraftFormData(null);
   };
 
-  const openReviewRequest = (requestId: string) => {
-    setSelectedRequestId(requestId);
-    setActiveView('review-sign');
-  };
+  const openReviewRequest = navigation.openRequest;
   const refreshRequests = async () => {
     const latest = await (apiRepository || dataService).getRequests();
     setRequests(latest);
@@ -409,6 +367,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
 
   // Demo actions use the same intent contract as the API adapter.
   const actionRepository = useMemo(() => apiRepository || new LocalActionRepository(currentUserId), [currentUserId, apiRepository]);
+  const [resolvedRoute, setResolvedRoute] = useState({ key: '', status: 'loading' as 'loading' | 'ready' | 'unavailable' });
+  const routeKey = `${currentUserId}:${selectedRequestId}`;
+  const requestRouteStatus = resolvedRoute.key === routeKey ? resolvedRoute.status : 'loading';
+  useEffect(() => {
+    if (!initialLoaded || activeView !== 'review-sign' || !selectedRequestId) return;
+    let cancelled = false;
+    setResolvedRoute({ key: routeKey, status: 'loading' });
+    void actionRepository.getRequestById(selectedRequestId).then(record => {
+      if (cancelled) return;
+      if (!record || !canReadPreciRoute(currentUser, record)) {
+        setResolvedRoute({ key: routeKey, status: 'unavailable' }); return;
+      }
+      setRequests(previous => [...previous.filter(item => item.id !== record.id), record]);
+      setSelectedScopeState(record.companyId);
+      setResolvedRoute({ key: routeKey, status: 'ready' });
+    }).catch(() => { if (!cancelled) setResolvedRoute({ key: routeKey, status: 'unavailable' }); });
+    return () => { cancelled = true; };
+  }, [initialLoaded, activeView, selectedRequestId, currentUserId, actionRepository, currentUser]);
+
   const actionFailure = (error: unknown) => ({ success: false, error: error instanceof Error ? error.message : 'Could not save request.' });
   const submitNewRequest = async (formData: AdminWorkFormData, attachments: AttachmentItem[] = [], comment?: string, signatureDataUrl?: string, signerChoices?: SubmitInput['signerChoices']) => {
     const validation = validateOriginatingCompany(selectedScope, formData.companyId, currentUser.companyId);
@@ -439,6 +416,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
         if (draftCoordinator) { if (activeDraftKey.current === draftKey) setDraftFormData(null); }
         else try { await clearDraft(); } catch (error) { console.error('Request saved but draft could not be cleared:', error); }
       }
+      navigation.clearDirty();
       return { success: true, newId: record.id };
     } catch (error) {
       if ((formData.administrativePayment || formData.itRequest || formData.cashVoucher || formData.expenseClaim || formData.rnd) && error instanceof ApiError && error.status === 409) {
@@ -456,25 +434,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
   };
   const revisionOf = (id: string) => (requests.find(r => r.id === id) as VersionedRequest | undefined)?.revision ?? 1;
   const pendingActions = useRef(new Set<string>());
-  const runAction = async (id: string, work: () => Promise<VersionedRequest>) => {
-    if (pendingActions.current.has(id)) return { success: false, error: 'A save is already in progress. Please wait.' };
-    pendingActions.current.add(id);
+  const runAction = async (requestId: string, performAction: () => Promise<VersionedRequest>) => {
+    if (pendingActions.current.has(requestId)) return { success: false, error: 'A save is already in progress. Please wait.' };
+    pendingActions.current.add(requestId);
     try {
-      const record = await work();
-      setRequests(prev => prev.map(r => r.id === record.id ? record : r));
+      const updatedRequest = await performAction();
+      setRequests(currentRequests => currentRequests.map(request => request.id === updatedRequest.id ? updatedRequest : request));
       return { success: true };
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         try {
-          const latest = await actionRepository.getRequestById(id);
-          if (latest) setRequests(prev => prev.map(r => r.id === id ? latest : r));
+          const latestRequest = await actionRepository.getRequestById(requestId);
+          if (latestRequest) setRequests(currentRequests => currentRequests.map(request => request.id === requestId ? latestRequest : request));
           return { success: false, error: 'This request changed in another session. The latest version is now loaded. Your entries are preserved. Cancel this dialog to review the latest stage and document before confirming again.' };
         } catch {
           return { success: false, error: 'This request changed in another session, but the latest version could not be loaded. Your entries are preserved. Check the connection and try again; no action was retried.' };
         }
       }
       return actionFailure(error);
-    } finally { pendingActions.current.delete(id); }
+    } finally { pendingActions.current.delete(requestId); }
   };
   const approveRequest = (id: string, comment?: string, signatureDataUrl?: string) => runAction(id, () => actionRepository.approve(id, { expectedRevision: revisionOf(id), comment, signatureDataUrl: signatureDataUrl || '' }));
   const returnRequest = (id: string, reason: string) => runAction(id, () => actionRepository.returnForCorrection(id, { expectedRevision: revisionOf(id), reason }));
@@ -542,6 +520,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
         workflows,
         currentWorkflow,
         saveWorkflow,
+        navigationPrompt: navigation.pending ? { stay: navigation.stay, leave: navigation.leave } : null,
+        setUnsavedWork: navigation.setDirty,
+        requestRouteStatus,
         activeView,
         setActiveView,
         isMobileSidebarOpen,
@@ -599,3 +580,16 @@ export const useApp = () => {
   }
   return context;
 };
+
+/** Compare editable state against its mounted/loaded baseline; UI-only state is excluded. */
+export function useUnsavedWork(snapshot: string, ready = true) {
+  const { setUnsavedWork } = useApp();
+  const key = useRef(Symbol('editor'));
+  const baseline = useRef<string | null>(ready ? snapshot : null);
+  useEffect(() => {
+    if (!ready) return;
+    if (baseline.current === null) baseline.current = snapshot;
+    setUnsavedWork(key.current, snapshot !== baseline.current);
+    return () => setUnsavedWork(key.current, false);
+  }, [snapshot, ready, setUnsavedWork]);
+}

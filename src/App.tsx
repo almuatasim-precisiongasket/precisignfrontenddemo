@@ -1,3 +1,5 @@
+import { WorkspaceDialog } from './components/common/WorkspaceDialog';
+import { canConfigureSigningRoutes } from './utils/workflowAdministration';
 import { isShowcaseBuild } from './config/demo';
 import { ShowcaseAdministration } from './services/showcaseAdministration';
 import { ShowcaseBar } from './components/layout/ShowcaseBar';
@@ -26,11 +28,16 @@ import { Building2, Check, Eye, EyeOff, KeyRound, Mail, PenLine, UserRound, Arro
 import { AuthLayout } from './components/layout/AuthLayout';
 
 const MainLayout: React.FC<{ repository?: ApiPreciSignRepository; onSignOut?: () => void }> = ({ repository, onSignOut }) => {
-  const { activeView, setActiveView, currentUser, selectedScope, selectedRequestId, selectedRequestFormType, draftReady, draftError, retryDraft, readOnly, draftCompanyId, selectDraftCompany, companies } = useApp();
+  const { activeView, setActiveView, navigationPrompt, requestRouteStatus, currentUser, selectedScope, selectedRequestId, selectedRequestFormType, draftReady, draftError, retryDraft, readOnly, draftCompanyId, selectDraftCompany, companies } = useApp();
   const administration = React.useMemo(() => repository ?? (isShowcaseBuild ? new ShowcaseAdministration(currentUser.id) : undefined), [repository, currentUser.id]);
   const canOpenDirectory = Boolean(administration && currentUser.isSuperAdmin);
   const [sidebarHidden, setSidebarHidden] = React.useState(false);
   const awaitingAccess = readOnly && companies.length === 0;
+  const unavailable = <section className="workspace-panel m-6 max-w-xl space-y-3 p-6"><h1 className="text-xl font-bold">{activeView === 'not-found' ? 'Page not found' : activeView === 'review-sign' ? 'Request unavailable' : 'Page unavailable'}</h1><p className="text-sm text-workspace-muted">This page may not exist or may not be available to your account.</p><button type="button" className="workspace-primary min-h-10 px-4" onClick={() => setActiveView('dashboard')}>Go to dashboard</button></section>;
+  const blockedSettings = (activeView === 'user-directory' || activeView === 'company-branding') && !canOpenDirectory
+    || activeView === 'workflow-settings' && !canConfigureSigningRoutes(currentUser) && (Boolean(repository) || isShowcaseBuild);
+  const blockedForm = activeView === 'create-request' && (Boolean(repository) || isShowcaseBuild)
+    && !companies.some(company => (selectedScope === 'PEG' || company.id === selectedScope) && canUserStartForm(currentUser, company.id, selectedRequestFormType));
   const shortcutForm = companyForms.find(form => form.name === selectedRequestFormType)?.name;
   const libraryEditor = shortcutForm === 'Administrative & Payment Request' ? undefined : shortcutForm;
   function renderRequestEditor() {
@@ -66,7 +73,9 @@ const MainLayout: React.FC<{ repository?: ApiPreciSignRepository; onSignOut?: ()
         <AppHeader onSignOut={onSignOut} sidebarHidden={sidebarHidden} onToggleSidebar={() => setSidebarHidden(value => !value)} />
         {isShowcaseBuild && <ShowcaseBar />}
         <main className="flex-1 pb-16">
-          {activeView === 'user-directory' && canOpenDirectory && administration ? <AccountDirectoryView repository={administration} />
+          {activeView === 'not-found' || blockedSettings || blockedForm ? unavailable
+          : activeView === 'review-sign' ? requestRouteStatus === 'loading' ? <p role="status" className="p-6">Loading request…</p> : requestRouteStatus === 'unavailable' ? unavailable : <ReviewSignView key={`${currentUser.id}:${selectedScope}:${selectedRequestId}`} />
+          : activeView === 'user-directory' && canOpenDirectory && administration ? <AccountDirectoryView repository={administration} />
           : activeView === 'company-branding' && canOpenDirectory && administration ? <CompanyBrandingView repository={administration} />
           : activeView === 'user-profile' ? <UserProfileView key={currentUser.id} />
           : awaitingAccess ? <section className="workspace-panel mx-4 my-6 max-w-xl space-y-3 p-6 sm:mx-6">
@@ -77,12 +86,17 @@ const MainLayout: React.FC<{ repository?: ApiPreciSignRepository; onSignOut?: ()
           </section> : <>
           {(activeView === 'dashboard' || activeView === 'requests' || activeView === 'user-directory') && <DashboardView key={activeView} />}
           {activeView === 'create-request' && renderRequestEditor()}
-          {activeView === 'review-sign' && <ReviewSignView key={`${currentUser.id}:${selectedScope}:${selectedRequestId}`} />}
           {activeView === 'forms-library' && <FormsLibraryView />}
           {activeView === 'archive' && <ArchiveRegisterView />}
           {activeView === 'workflow-settings' && <WorkflowSettingsView />}
           </>}
         </main>
+        {navigationPrompt && <WorkspaceDialog titleId="leave-page-heading" onClose={navigationPrompt.stay} className="max-w-md p-6">
+          <h2 id="leave-page-heading" className="text-lg font-bold">Leave this page?</h2>
+          <p className="mt-2 text-sm text-workspace-muted">You have unsaved changes. Leaving may discard them. Existing saved drafts remain available.</p>
+          <div className="mt-5 flex justify-end gap-2"><button type="button" data-dialog-focus className="workspace-control min-h-10 px-4" onClick={navigationPrompt.stay}>Stay</button><button type="button" className="workspace-primary min-h-10 px-4" onClick={navigationPrompt.leave}>Leave</button></div>
+        </WorkspaceDialog>}
+
       </div>
     </div>
   );

@@ -3,7 +3,7 @@ import { EditorInput, EditorTextarea, EditorSelect } from './RequestEditorContro
 import { EditorViewToggle } from './EditorViewToggle';
 import { useFieldErrors } from './useFieldErrors';
 import { useState } from 'react';
-import { useApp } from '../../context/AppContext';
+import { useApp, useUnsavedWork } from '../../context/AppContext';
 import type { AdminWorkFormData, AttachmentItem, CompanyId } from '../../types';
 import { canUserAccessCompany, canUserStartForm } from '../../utils/companyAccess';
 import { applySignerChoices, type SignerChoices as Choices } from '../../utils/signingSelection';
@@ -41,6 +41,7 @@ export function FinancialRequestView({ form, onBack }: { form: FinancialForm; on
   const eligibleRecipients = company ? users.filter(user => canUserAccessCompany(user, company.id)) : [];
   const route = workflows.find(item => item.companyId === company?.id && item.formType === form && item.stages.length > 0);
   const [choices, setChoices] = useState<Choices>({});
+  useUnsavedWork(JSON.stringify({ companyId, date, voucher, claim, purpose, choices, reading, attachments: attachments.map(file => file.id) }));
   const data: AdminWorkFormData = {
     companyId: company?.id ?? currentUser.companyId, companyName: company?.fullName ?? '', companyLogoDataUrl: company?.logoDataUrl,
     dateOfRequest: date, requesterName: currentUser.name, requesterId: currentUser.id,
