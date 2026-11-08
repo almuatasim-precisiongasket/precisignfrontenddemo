@@ -1,3 +1,6 @@
+import { isShowcaseBuild } from './config/demo';
+import { ShowcaseAdministration } from './services/showcaseAdministration';
+import { ShowcaseBar } from './components/layout/ShowcaseBar';
 import React from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { AppSidebar } from './components/layout/AppSidebar';
@@ -24,7 +27,8 @@ import { AuthLayout } from './components/layout/AuthLayout';
 
 const MainLayout: React.FC<{ repository?: ApiPreciSignRepository; onSignOut?: () => void }> = ({ repository, onSignOut }) => {
   const { activeView, setActiveView, currentUser, selectedScope, selectedRequestId, selectedRequestFormType, draftReady, draftError, retryDraft, readOnly, draftCompanyId, selectDraftCompany, companies } = useApp();
-  const canOpenDirectory = Boolean(repository && currentUser.isSuperAdmin);
+  const administration = React.useMemo(() => repository ?? (isShowcaseBuild ? new ShowcaseAdministration(currentUser.id) : undefined), [repository, currentUser.id]);
+  const canOpenDirectory = Boolean(administration && currentUser.isSuperAdmin);
   const [sidebarHidden, setSidebarHidden] = React.useState(false);
   const awaitingAccess = readOnly && companies.length === 0;
   const shortcutForm = companyForms.find(form => form.name === selectedRequestFormType)?.name;
@@ -60,9 +64,10 @@ const MainLayout: React.FC<{ repository?: ApiPreciSignRepository; onSignOut?: ()
 
       <div className="flex-1 flex flex-col min-w-0">
         <AppHeader onSignOut={onSignOut} sidebarHidden={sidebarHidden} onToggleSidebar={() => setSidebarHidden(value => !value)} />
+        {isShowcaseBuild && <ShowcaseBar />}
         <main className="flex-1 pb-16">
-          {activeView === 'user-directory' && canOpenDirectory && repository ? <AccountDirectoryView repository={repository} />
-          : activeView === 'company-branding' && canOpenDirectory && repository ? <CompanyBrandingView repository={repository} />
+          {activeView === 'user-directory' && canOpenDirectory && administration ? <AccountDirectoryView repository={administration} />
+          : activeView === 'company-branding' && canOpenDirectory && administration ? <CompanyBrandingView repository={administration} />
           : activeView === 'user-profile' ? <UserProfileView key={currentUser.id} />
           : awaitingAccess ? <section className="workspace-panel mx-4 my-6 max-w-xl space-y-3 p-6 sm:mx-6">
             <span className="grid size-12 place-items-center rounded-xl bg-workspace-tint text-workspace-teal"><Building2 aria-hidden="true" /></span>
@@ -264,7 +269,7 @@ export default function App() {
   if (import.meta.env.VITE_DATA_MODE && import.meta.env.VITE_DATA_MODE !== 'demo') return <div className="p-6 text-sm" role="alert">Invalid data mode. Check the application configuration.</div>;
   return (
     <AppProvider>
-      {import.meta.env.VITE_DEMO_NOTICE === 'true' && <p role="status" className="demo-workspace-notice bg-teal-50 px-6 py-2 text-xs text-teal-900">Demo workspace · Changes stay in this browser. Use sample information only.</p>}
+      {!isShowcaseBuild && import.meta.env.VITE_DEMO_NOTICE === 'true' && <p role="status" className="demo-workspace-notice bg-teal-50 px-6 py-2 text-xs text-teal-900">Demo workspace · Changes stay in this browser. Use sample information only.</p>}
       <MainLayout />
     </AppProvider>
   );

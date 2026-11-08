@@ -1,3 +1,4 @@
+import { isShowcaseBuild } from '../../config/demo';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Building2, CheckCircle2, KeyRound, Mail, MoreHorizontal, Search, Shield, SlidersHorizontal, UserRoundCheck, UserRoundMinus, UsersRound, X } from 'lucide-react';
 import type { StaffRole, AccountDirectoryEntry, IAccountAdministrationRepository } from '../../services/repository';
@@ -140,7 +141,7 @@ export function AccountDirectoryView({ repository }: { repository: IAccountAdmin
                 <button type="button" className="preci-menu-action" disabled={account.companyGrants === null} onClick={event => openEditor(account, 'email', event.currentTarget)}><Mail aria-hidden="true" /> Change email</button>
                 {account.companyGrants !== null && !account.isDisabled && !['Director', 'General Manager'].includes(account.role) &&
                   <button type="button" className="preci-menu-action" onClick={event => openEditor(account, 'role', event.currentTarget)}><UsersRound aria-hidden="true" /> Change staff role</button>}
-                {!account.isDisabled && <button type="button" className="preci-menu-action" onClick={event => openEditor(account, 'reset', event.currentTarget)}><KeyRound aria-hidden="true" /> Create reset link</button>}
+                {!isShowcaseBuild && !account.isDisabled && <button type="button" className="preci-menu-action" onClick={event => openEditor(account, 'reset', event.currentTarget)}><KeyRound aria-hidden="true" /> Create reset link</button>}
                 <button type="button" className={`preci-menu-action ${account.isDisabled ? '' : 'text-rose-800 hover:bg-rose-50'}`} disabled={account.companyGrants === null} onClick={event => openEditor(account, 'status', event.currentTarget)}>
                   {account.isDisabled ? <UserRoundCheck aria-hidden="true" /> : <UserRoundMinus aria-hidden="true" />}
                   {account.isDisabled ? 'Re-enable account' : 'Disable account'}

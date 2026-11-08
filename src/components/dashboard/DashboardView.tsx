@@ -1,3 +1,4 @@
+import { isShowcaseBuild } from '../../config/demo';
 import { getInitials } from '../../utils/approvalJourney';
 import { needsMyAction } from '../../utils/actionQueue';
 import { needsProcessingAction } from '../../utils/routeProcessing';
@@ -47,7 +48,7 @@ export const DashboardView: React.FC = () => {
     openReviewRequest,
     setSelectedRequestFormType,
   } = useApp();
-  const formShortcuts = companyForms.filter(form => !connected || companies.some(company =>
+  const formShortcuts = companyForms.filter(form => (!connected && !isShowcaseBuild) || companies.some(company =>
     (selectedScope === 'PEG' || selectedScope === company.id) && canUserStartForm(currentUser, company.id, form.name)));
 
   const [searchQuery, setSearchQuery] = useState('');

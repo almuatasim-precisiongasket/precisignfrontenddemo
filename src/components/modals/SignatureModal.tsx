@@ -222,7 +222,7 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
                 value={styledName}
                 readOnly
                 className="w-full px-3 py-1.5 text-xs border border-[#CBD5E1] rounded focus:outline-none focus:ring-1 focus:ring-[#365C78]"
-                placeholder="e.g. Afzal Kazi"
+                placeholder="Your full name"
               />
               <div className="p-4 bg-[#F5F6F8] border border-dashed border-[#CBD5E1] rounded-md flex items-center justify-center min-h-[90px]">
                 <div

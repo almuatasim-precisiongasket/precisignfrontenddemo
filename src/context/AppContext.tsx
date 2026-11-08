@@ -1,3 +1,5 @@
+import { isShowcaseBuild } from '../config/demo';
+import { activeDemoDataset } from '../data/demoDataset';
 import { canReadPreciRoute } from '../utils/routeAccess';
 import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
 import {
@@ -140,7 +142,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
   const [companies, setCompanies] = useState<Company[]>(apiData?.bootstrap.companies || []);
   const [selectedScope, setSelectedScopeState] = useState<ViewingScope>(apiData ? (apiData.bootstrap.companies.find(c => c.id === apiData.bootstrap.user.companyId)?.id || apiData.bootstrap.companies[0]?.id || 'PEG') : 'PEW');
   const [users, setUsers] = useState<UserProfile[]>(apiData ? [apiData.bootstrap.user, ...apiData.bootstrap.users.filter(u => u.id !== apiData.bootstrap.user.id)] : []);
-  const [currentUserId, setCurrentUserIdState] = useState<string>(apiData?.bootstrap.user.id || 'user-afzal');
+  const [currentUserId, setCurrentUserIdState] = useState<string>(apiData?.bootstrap.user.id || activeDemoDataset.session.userId);
   const [workflows, setWorkflows] = useState<WorkflowConfig[]>(apiData?.bootstrap.workflows || []);
   const [requests, setRequests] = useState<RequestRecord[]>(apiData?.requests || []);
   const [draftFormData, setDraftFormData] = useState<AdminWorkDraft | null>(null);
@@ -165,13 +167,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
     | 'company-branding'
     | 'forms-library'
     | 'archive'
-  >('dashboard');
+  >(() => isShowcaseBuild && window.location.pathname === '/rnd' ? 'create-request' : 'dashboard');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [requestsFilter, setRequestsFilter] = useState<'pending' | 'my' | 'all' | 'approved'>('pending');
 
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>('PEW-AW-2026-0018');
-  const [selectedRequestFormType, setSelectedRequestFormType] = useState<string>('Admin Work Request');
+  const [selectedRequestFormType, setSelectedRequestFormType] = useState<string>(() => isShowcaseBuild && window.location.pathname === '/rnd' ? 'R&D Initiative' : 'Admin Work Request');
   useEffect(() => { if (selectedScope === 'PEG') setGroupDraftCompany(null); }, [selectedRequestFormType, selectedScope]);
+  const handlingHistory = useRef(false);
+  useEffect(() => {
+    if (!isShowcaseBuild) return;
+    const onPop = () => { handlingHistory.current = true; if (window.location.pathname === '/rnd') { setSelectedRequestFormType('R&D Initiative'); setActiveView('create-request'); } else setActiveView('dashboard'); };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+  useEffect(() => {
+    if (!isShowcaseBuild) return;
+    if (handlingHistory.current) { handlingHistory.current = false; return; }
+    const path = activeView === 'create-request' && selectedRequestFormType === 'R&D Initiative' ? '/rnd' : '/';
+    if (window.location.pathname !== path) window.history.pushState(null, '', path);
+  }, [activeView, selectedRequestFormType]);
 
   // The directory reads live grants. Refresh the workspace snapshot on browsing
   // screens so those same grants drive form visibility without a new sign-in.
@@ -206,6 +221,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
       window.removeEventListener('focus', refreshAccess);
     };
   }, [activeView, apiRepository, currentUserId]);
+
+  useEffect(() => {
+    if (!isShowcaseBuild || readOnly) return;
+    const refresh = () => { void Promise.all([dataService.getUsers(), dataService.getCompanies(), dataService.getWorkflows()]).then(([people, organizations, routes]) => { setUsers(people); setCompanies(organizations); setWorkflows(routes); }).catch(console.error); };
+    window.addEventListener('precisign:showcase-changed', refresh);
+    return () => window.removeEventListener('precisign:showcase-changed', refresh);
+  }, [readOnly]);
 
   // Load initial data through repository abstraction
   useEffect(() => {
@@ -287,12 +309,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
 
   const matchingUser = users.find((u) => u.id === currentUserId);
   const currentUser = matchingUser ?? apiData?.bootstrap.user ?? users[0] ?? {
-    id: 'user-afzal',
-    name: 'Afzal Kazi',
-    email: 'afzal.kazi@precision-eg.com',
-    role: 'Director' as const,
-    department: 'Management',
-    initials: 'AK',
+    id: 'loading-employee',
+    name: 'Loading employee',
+    email: '',
+    role: 'Employee' as const,
+    department: '',
+    initials: '…',
     avatarColor: '#6366f1',
     companyId: 'PEW' as CompanyId,
   };
@@ -490,8 +512,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
     setWorkflows(allWorkflows);
     setUsers(allUsers);
     setCompanies(allCompanies);
-    setSelectedScopeState('PEW');
-    setCurrentUserIdState('user-afzal');
+    setSelectedScopeState(activeDemoDataset.session.companyId);
+    setCurrentUserIdState(activeDemoDataset.session.userId);
+    setActiveView('dashboard');
     setDraftFormData(null);
   };
 
