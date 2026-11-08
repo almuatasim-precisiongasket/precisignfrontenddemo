@@ -1,6 +1,7 @@
 import type { CompanyId, WorkflowConfig, WorkflowStageConfig } from '../types';
 
 export const routeForms = {
+  'R&D Initiative': { requester: 'Submitter Signature', department: undefined, final: 'Reviewer Signature', processing: 'Section H is completed by the assigned final approver.' },
   'Administrative & Payment Request': { requester: 'Requester Signature', department: 'Department Head Signature', final: 'Approver Signature', processing: '' },
   'IT Request': { requester: 'Requester Signature', department: undefined, final: 'Approval Authority Signature', processing: '' },
   'Cash Voucher': { requester: 'Requester (you)', department: undefined, final: 'Approved by', processing: "Receiver's Signature and Cashier Signature are collected during cash processing." },

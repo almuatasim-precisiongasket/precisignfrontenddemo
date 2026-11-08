@@ -331,6 +331,16 @@ export function buildApprovalJourney(
       responsiblePersonAvatarColor: getAvatarColor(requesterName),
       isCurrentUserResponsible: isUserTheRequester,
     };
+  } else if (request.formType === 'R&D Initiative' && request.status === 'Pending Approval'
+    && request.approvalSteps.every(step => step.status === 'Approved' || step.status === 'Bypassed')) {
+    const final = request.approvalSteps.at(-1);
+    responsibility = {
+      headline: 'Evaluation needed', subtext: `${final?.assignedUserName ?? 'The final approver'} must finish Section H and complete the request.`,
+      variant: final?.assignedUserId === currentUserId ? 'action_needed' : 'waiting',
+      responsiblePersonName: final?.assignedUserName ?? 'Final approver', responsiblePersonRole: final?.assignedRole ?? '',
+      responsiblePersonInitials: getInitials(final?.assignedUserName ?? ''), responsiblePersonAvatarColor: getAvatarColor(final?.assignedUserName ?? ''),
+      isCurrentUserResponsible: final?.assignedUserId === currentUserId,
+    };
   } else {
     // Pending Approval State
     const activeStep = approvalSteps[currentStageIndex];

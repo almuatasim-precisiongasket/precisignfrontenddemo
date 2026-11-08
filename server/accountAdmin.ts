@@ -6,7 +6,7 @@ import { transaction } from './db';
 import { fields, RequestError, text } from './requestValidation';
 
 const companies = ['PEW', 'ICCL', 'FSG'];
-const forms = ['Administrative & Payment Request', 'IT Request', 'Cash Voucher', 'Expense Claim', 'Admin Work Request'];
+const forms = ['Administrative & Payment Request', 'IT Request', 'Cash Voucher', 'Expense Claim', 'R&D Initiative', 'Admin Work Request'];
 
 export function accountAdminRoutes(db: DatabaseSync, origin: string, now: () => number) {
   const router = Router();

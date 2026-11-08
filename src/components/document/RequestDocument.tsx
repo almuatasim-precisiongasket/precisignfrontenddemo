@@ -1,3 +1,4 @@
+import { RndRequestDocument } from '../rnd/RndRequestDocument';
 import type { AdminWorkFormData, AttachmentItem, RequestRecord } from '../../types';
 import { AdminWorkRequestDocument } from './AdminWorkRequestDocument';
 import { AdministrativePaymentDocument } from './AdministrativePaymentDocument';
@@ -26,6 +27,7 @@ export function getRequestDocumentVersion(request: RequestRecord, version: numbe
 
 export function RequestDocument({ formType, data, attachments, processing, print }: RequestDocumentProps) {
   switch (formType) {
+    case 'R&D Initiative': return <RndRequestDocument data={data} />;
     case 'Cash Voucher':
     case 'Expense Claim':
       return <FinancialRequestDocument data={data} attachments={attachments} processing={processing} />;

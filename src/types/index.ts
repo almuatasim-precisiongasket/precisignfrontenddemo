@@ -81,7 +81,16 @@ export interface AdministrativePaymentDetails {
   departmentHeadSignature?: { name: string; dataUrl: string };
 }
 
+export interface RndFormData {
+  /** Reference IDs correspond one-to-one to the approved PR#26-RND01 fields. */
+  fields: Record<string, string>;
+  choices: Record<string, string[]>;
+  marketRows: { sol: string; sup: string; web: string }[];
+}
+
 export interface AdminWorkFormData {
+  rnd?: RndFormData;
+  rndEvaluationUpdatedAfterSigning?: boolean;
   dateOfRequest: string;
   companyId: CompanyId;
   companyName: string;
@@ -171,7 +180,7 @@ export interface ApprovalHistoryItem {
   actionByUserId: string;
   actionByName: string;
   actionByRole: string;
-  action: 'Submitted' | 'Approved' | 'Returned for Correction' | 'Rejected' | 'Director Override' | 'Route Completed' | 'Cancelled' | 'Signer Replacement Proposed' | 'Signer Replaced' | 'Replacement Declined';
+  action: 'Evaluation Updated' | 'Submitted' | 'Approved' | 'Returned for Correction' | 'Rejected' | 'Director Override' | 'Route Completed' | 'Cancelled' | 'Signer Replacement Proposed' | 'Signer Replaced' | 'Replacement Declined';
   dateTime: string;
   comments?: string;
   version: number;
@@ -197,6 +206,9 @@ export interface ProcessingMilestone {
 }
 
 export interface RequestRecord {
+  rndEvaluationHistory?: { version: number; at: string; actorId: string; actorName: string; evaluation: RndFormData }[];
+  /** R&D-only approval-time states; later evaluation never changes these entries. */
+  rndSignedStates?: { version: number; stageId: string; actorId: string; at: string; signatureDataUrl?: string; formData: AdminWorkFormData }[];
   financeHoldHistory?: (ProcessingMilestone & {
     action: 'hold' | 'evidence' | 'resume' | 'correction';
     documentVersion: number;
@@ -207,7 +219,7 @@ export interface RequestRecord {
   formerSignerIds?: string[];
   pendingReplacement?: { stageId: string; oldUserId: string; newUserId: string; reason: string; proposedBy: string };
   id: string;
-  formType: 'Admin Work Request' | 'Administrative & Payment Request' | 'Payment Request' | 'IT Request' | 'Cash Voucher' | 'Expense Claim' | 'IT Asset Allocation' | 'Undertaking Guarantee';
+  formType: 'Admin Work Request' | 'Administrative & Payment Request' | 'Payment Request' | 'IT Request' | 'Cash Voucher' | 'Expense Claim' | 'IT Asset Allocation' | 'Undertaking Guarantee' | 'R&D Initiative';
   companyId: CompanyId;
   title: string;
   requesterId: string;

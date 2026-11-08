@@ -1,3 +1,4 @@
+import { validateRnd } from '../src/utils/rndWorkflow';
 import sharp from 'sharp';
 import { PDFDocument } from 'pdf-lib';
 import { randomUUID } from 'node:crypto';
@@ -54,8 +55,9 @@ export async function attachments(value: any, actor: string): Promise<Attachment
   }
   return result;
 }
-export function form(value: any, partial = false, combined = false, it = false, financial?: 'cashVoucher' | 'expenseClaim'): SubmitInput['formData'] {
-  fields(value, ['dateOfRequest','department','priority','workDescription','documents', ...(combined ? ['administrativePayment'] : []), ...(it ? ['itRequest'] : []), ...(financial ? [financial] : [])]);
+export function form(value: any, partial = false, combined = false, it = false, financial?: 'cashVoucher' | 'expenseClaim', rnd = false): SubmitInput['formData'] {
+  fields(value, ['dateOfRequest','department','priority','workDescription','documents', ...(combined ? ['administrativePayment'] : []), ...(it ? ['itRequest'] : []), ...(financial ? [financial] : []), ...(rnd ? ['rnd'] : [])]);
+  if (rnd) { const error = validateRnd(value.rnd, false); if (error) fail(error); }
   function amount(value: unknown) {
     if (!/^\d{1,9}(\.\d{1,2})?$/.test(text(value, 12)) || Number(value) <= 0) fail('Enter a positive amount in SAR.');
   }

@@ -4,7 +4,7 @@ import type { SignerChoices } from '../utils/signingSelection';
 
 export type VersionedRequest = RequestRecord & { revision: number };
 export const API_CONTRACT_VERSION = 1 as const;
-export const SUBMITTABLE_FORMS = ['Admin Work Request', 'Administrative & Payment Request', 'IT Request', 'Cash Voucher', 'Expense Claim'] as const;
+export const SUBMITTABLE_FORMS = ['Admin Work Request', 'Administrative & Payment Request', 'IT Request', 'Cash Voucher', 'Expense Claim', 'R&D Initiative'] as const;
 export type SubmittableForm = typeof SUBMITTABLE_FORMS[number];
 export interface BootstrapData { user: UserProfile; companies: Company[]; users: UserProfile[]; workflows: WorkflowConfig[]; }
 export interface SubmitInput {
@@ -13,7 +13,7 @@ export interface SubmitInput {
   expectedWorkflowVersion?: number;
   companyId: CompanyId;
   formType: SubmittableForm;
-  formData: Pick<AdminWorkFormData, 'dateOfRequest' | 'department' | 'priority' | 'workDescription' | 'documents' | 'administrativePayment' | 'itRequest' | 'cashVoucher' | 'expenseClaim'>;
+  formData: Pick<AdminWorkFormData, 'dateOfRequest' | 'department' | 'priority' | 'workDescription' | 'documents' | 'administrativePayment' | 'itRequest' | 'cashVoucher' | 'expenseClaim' | 'rnd'>;
   signatureDataUrl: string;
   attachments?: AttachmentItem[];
   comment?: string;
@@ -29,6 +29,7 @@ export interface PrivateDraftRepository {
 }
 export interface OverrideInput extends ReasonInput { signatureDataUrl: string; }
 export interface RequestActions {
+  saveRndEvaluation(id: string, input: { expectedRevision: number; evaluation: import('../types').RndFormData }): Promise<VersionedRequest>;
   recordProcessing(id: string, input: { expectedRevision: number; action: ProcessingCommand; note: string; signatureDataUrl?: string; attachment?: AttachmentItem }): Promise<VersionedRequest>;
   replaceSigner(id: string, input: ReasonInput & { stageId: string; newUserId: string }): Promise<VersionedRequest>;
   acceptReplacement(id: string, input: { expectedRevision: number; accept: boolean }): Promise<VersionedRequest>;

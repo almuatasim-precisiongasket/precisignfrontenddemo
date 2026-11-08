@@ -3,10 +3,12 @@ import { useApp } from '../../context/AppContext';
 import { canConfigureSigningRoutes } from '../../utils/workflowAdministration';
 import { signerOptions, isOptionalSigner } from '../../utils/signingSelection';
 import { canUserStartForm } from '../../utils/companyAccess';
+import { RndRequestView } from '../rnd/RndRequestView';
 import { FinancialRequestView } from '../create/FinancialRequestView';
 import { ITRequestPreviewView } from '../create/ITRequestPreviewView';
 
 export const companyForms = [
+  { name: 'R&D Initiative', department: 'Research & Development', description: 'Identify a challenge, explore solutions and request an R&D evaluation.', icon: FileText },
   {
     name: 'Administrative & Payment Request',
     department: 'Administration / Accounts',
@@ -49,6 +51,7 @@ export function FormsLibraryView({ initialForm }: { initialForm?: LibraryEditorF
     setActiveView('create-request');
   }
 
+  if (openForm === 'R&D Initiative') return <RndRequestView key={editorKey} onBack={closeForm} />;
   if (openForm === 'IT Request') return <ITRequestPreviewView key={editorKey} onBack={closeForm} />;
   if (openForm === 'Cash Voucher' || openForm === 'Expense Claim') {
     return <FinancialRequestView key={editorKey} form={openForm} onBack={closeForm} />;

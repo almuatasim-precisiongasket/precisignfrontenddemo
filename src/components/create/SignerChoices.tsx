@@ -7,6 +7,7 @@ import type { UserProfile, WorkflowConfig } from '../../types';
 import { suggestedSignerChoices, applySignerChoices, noEligibleSigners, isOptionalSigner, secondarySignerOptions, signerOptions, type SignerChoices as Choices } from '../../utils/signingSelection';
 
 const signatureLabels = {
+  'R&D Initiative': { requester: 'Submitter Signature (Requester)', intermediate: undefined, final: 'Reviewer Signature (Final Approver)' },
   'Administrative & Payment Request': { requester: 'Requester Signature (Requester)', intermediate: 'Department Head Signature (Department Head)', final: 'Approver Signature (Final Approver)' },
   'IT Request': { requester: 'Requester Signature (Requester)', intermediate: undefined, final: 'Approval Authority Signature (Final Approver)' },
   'Cash Voucher': { requester: 'Requester (you)', intermediate: undefined, final: 'Approved by (Final Approver)' },

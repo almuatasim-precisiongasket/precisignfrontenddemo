@@ -1,3 +1,5 @@
+import { RndEvaluationPanel } from '../rnd/RndEvaluationPanel';
+import { RndFields } from '../rnd/RndFields';
 import React, { useState, useRef } from 'react';
 import { canAdministerWorkflows } from '../../utils/workflowAdministration';
 import { canCompleteWithOutstandingSteps, canProposeFinalReplacement, configuredReplacementIds, usesConfiguredBackups } from '../../utils/routeReplacement';
@@ -109,7 +111,7 @@ export const ReviewSignView: React.FC = () => {
 
   const financialRequest = (request.formType === 'Cash Voucher' && !!request.formData.cashVoucher)
     || (request.formType === 'Expense Claim' && !!request.formData.expenseClaim);
-  if (request.formType !== 'Admin Work Request' && request.formType !== 'Administrative & Payment Request' && !(request.formType === 'IT Request' && request.formData.itRequest) && !financialRequest) {
+  if (request.formType !== 'Admin Work Request' && request.formType !== 'Administrative & Payment Request' && !(request.formType === 'IT Request' && request.formData.itRequest) && !financialRequest && !(request.formType === 'R&D Initiative' && request.formData.rnd)) {
     return (
       <div className="p-12 text-center space-y-4">
         <div className="text-slate-500 text-sm">The {request.formType} document is not available for review yet.</div>
@@ -139,7 +141,7 @@ export const ReviewSignView: React.FC = () => {
   const isFinalApprover = request.approvalSteps.at(-1)?.assignedUserId === currentUser.id;
   const finalAlreadySigned = request.approvalSteps.at(-1)?.status === 'Approved';
   const isReturned = request.status === 'Returned for Correction';
-  const canSign = request.status === 'Pending Approval' && !isRequester && (isAssignedApprover || (isFinalApprover && !finalAlreadySigned));
+  const canSign = request.status === 'Pending Approval' && !isRequester && !(isFinalApprover && finalAlreadySigned) && (isAssignedApprover || (isFinalApprover && !finalAlreadySigned));
   const configuredBackups = usesConfiguredBackups(request) && request.workflowConfig.signerSelection !== 'company-directory';
   const replacementCandidates = replacementStage ? users.filter(user =>
     user.id !== request.requesterId && canUserAccessCompany(user, request.companyId) &&
@@ -551,6 +553,7 @@ export const ReviewSignView: React.FC = () => {
             mobileViewTab === 'document' ? 'hidden lg:block' : 'block'
           }`}
         >
+          {request.formData.rnd && onLatestVersion && <RndEvaluationPanel key={`${request.id}:${request.documentVersion}:${request.approvalSteps.at(-1)?.assignedUserId}`} request={request} />}
           <RouteProcessingPanel key={request.id} request={request} />
           <FinanceHoldPanel key={`finance-${request.id}`} request={request} />
           {!!request.omittedSigningSteps?.length && <p className="rounded border bg-white p-3 text-xs">Signatures not requested: {request.omittedSigningSteps.join(', ')}</p>}
@@ -858,7 +861,7 @@ export const ReviewSignView: React.FC = () => {
                   </select>
                 </label>
               </div>
-              {correctedForm.administrativePayment || correctedForm.expenseClaim
+              {correctedForm.rnd ? <RndFields value={correctedForm.rnd} onChange={rnd => setCorrectedForm(previous => ({ ...previous, rnd, workDescription: rnd.fields.inpProbTitle ?? '', department: rnd.fields.inpDept ?? '', dateOfRequest: rnd.fields.inpSubDate ?? '' }))} /> : correctedForm.administrativePayment || correctedForm.expenseClaim
                 ? <FinancialCorrectionFields data={correctedForm} attachments={correctedAttachments} onChange={setCorrectedForm} />
                 : request.formType === 'IT Request' ? (
                 <fieldset className="space-y-2">

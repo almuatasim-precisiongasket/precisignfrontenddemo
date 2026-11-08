@@ -102,6 +102,7 @@ export class ApiPreciSignRepository implements IAccountAdministrationRepository,
   }
   async submit(input: SubmitInput) { return this.record(await this.call('/requests', 'POST', input)); }
   private async action(id: string, action: string, input: unknown) { return this.record(await this.call(`/requests/${encodeURIComponent(id)}/${action}`, 'POST', input)); }
+  saveRndEvaluation(id: string, input: Parameters<RequestActions['saveRndEvaluation']>[1]) { return this.action(id, 'rnd-evaluation', input); }
   approve(id: string, input: ApprovalInput) { return this.action(id, 'approve', input); }
   returnForCorrection(id: string, input: ReasonInput) { return this.action(id, 'return', input); }
   reject(id: string, input: ReasonInput) { return this.action(id, 'reject', input); }

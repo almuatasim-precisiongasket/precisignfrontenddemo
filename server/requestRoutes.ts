@@ -1,3 +1,4 @@
+import { saveRndEvaluation } from '../src/utils/rndWorkflow';
 import { canReadPreciRoute } from '../src/utils/routeAccess';
 import { proposeSignerReplacement, acceptSignerReplacement } from '../src/utils/routeReplacement';
 import { Router } from 'express';
@@ -31,7 +32,7 @@ export function requestRoutes(db: DatabaseSync) {
       if (!legacy && expectedDraft !== undefined) fail('This draft revision belongs to the legacy form.');
       const actor = res.locals.user;
       if (!canUserStartForm(actor, companyId, body.formType)) throw new RequestError(403, 'Company or form access denied.');
-      const data = form(body.formData, false, combined, it, financial); await bytes(body.signatureDataUrl, true);
+      const data = form(body.formData, false, combined, it, financial, body.formType === 'R&D Initiative'); await bytes(body.signatureDataUrl, true);
       if (body.comment !== undefined) text(body.comment, 2000, false);
       const files = await attachments(body.attachments, actor.name);
       if (data.expenseClaim) {
@@ -60,7 +61,7 @@ export function requestRoutes(db: DatabaseSync) {
           fail('The requester cannot also be an approver.');
         }
         if (!workflow.stages.length || workflow.stages.some((stage,index) => stage.isFinalApproval !== (index === workflow.stages.length - 1))) fail('Invalid final approver designation.');
-        const prefix = it ? 'IT' : combined ? 'AP' : financial === 'cashVoucher' ? 'CV' : financial === 'expenseClaim' ? 'EC' : 'AW';
+        const prefix = body.formType === 'R&D Initiative' ? 'RD' : it ? 'IT' : combined ? 'AP' : financial === 'cashVoucher' ? 'CV' : financial === 'expenseClaim' ? 'EC' : 'AW';
         const result = {
           ...createNewRequestRecord({
             id: `${companyId}-${prefix}-${new Date().getFullYear()}-${randomUUID()}`,
@@ -81,6 +82,7 @@ export function requestRoutes(db: DatabaseSync) {
     try {
       const action = req.params.action; const body = req.body; const actor = res.locals.user;
       const allowed: Record<string,string[]> = { replace: ['expectedRevision','stageId','newUserId','reason'], 'accept-replacement': ['expectedRevision','accept'], cancel: ['expectedRevision','reason'], approve: ['expectedRevision','comment','signatureDataUrl'], return: ['expectedRevision','reason'], reject: ['expectedRevision','reason'], resubmit: ['expectedRevision','formData','attachments','changeNote','signatureDataUrl'], override: ['expectedRevision','reason','signatureDataUrl'] };
+      allowed['rnd-evaluation'] = ['expectedRevision', 'evaluation'];
       allowed.process = ['expectedRevision', 'action', 'note', 'signatureDataUrl', 'attachment'];
       if (!Object.hasOwn(allowed, action)) throw new RequestError(404, 'Action not found.');
       fields(body, allowed[action]);
@@ -112,14 +114,14 @@ export function requestRoutes(db: DatabaseSync) {
         const revised = action === 'resubmit' ? form(body.formData, false,
           request.formType === 'Administrative & Payment Request' && body.formData?.administrativePayment !== undefined,
           request.formType === 'IT Request',
-          request.formType === 'Expense Claim' && body.formData?.expenseClaim !== undefined ? 'expenseClaim' : undefined) : undefined;
+          request.formType === 'Expense Claim' && body.formData?.expenseClaim !== undefined ? 'expenseClaim' : undefined, request.formType === 'R&D Initiative') : undefined;
         if (revised?.expenseClaim) {
           const error = expenseEvidenceError(revised.expenseClaim, files ?? request.attachments);
           if (error) fail(error);
         }
         const targetRow = action === 'replace' ? db.prepare('SELECT * FROM account_profiles WHERE id=? AND COALESCE(is_disabled,0)=0').get(body.newUserId) : undefined;
         if (action === 'replace' && !targetRow) fail('Replacement user not found.');
-        const result = action === 'process' ? recordProcessing(request, actor, body.action, body.note, body.signatureDataUrl, evidence)
+        const result = action === 'rnd-evaluation' ? saveRndEvaluation(request, actor, body.evaluation) : action === 'process' ? recordProcessing(request, actor, body.action, body.note, body.signatureDataUrl, evidence)
           : action === 'replace' ? proposeSignerReplacement(request,actor,safeProfile(targetRow!),body.stageId,body.reason)
           : action === 'accept-replacement' ? acceptSignerReplacement(request,actor,body.accept)
           : action === 'cancel' ? cancelPreciRoute({ request, actingUser: actor, reason: body.reason }) : action === 'approve' ? approveRequestStage({ request, actingUser: actor, comment: body.comment, signatureDataUrl: body.signatureDataUrl })

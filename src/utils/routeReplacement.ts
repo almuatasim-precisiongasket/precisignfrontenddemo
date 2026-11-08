@@ -6,7 +6,7 @@ function event(request: RequestRecord, actor: UserProfile, action: ApprovalHisto
   return { id: crypto.randomUUID(), stepNumber: 0, actionByUserId: actor.id, actionByName: actor.name, actionByRole: actor.role, action, comments, dateTime: new Date().toISOString(), version: request.documentVersion };
 }
 export function usesConfiguredBackups(request: RequestRecord) {
-  return ['Administrative & Payment Request', 'IT Request', 'Cash Voucher', 'Expense Claim'].includes(request.formType);
+  return ['Administrative & Payment Request', 'IT Request', 'Cash Voucher', 'Expense Claim', 'R&D Initiative'].includes(request.formType);
 }
 
 export function configuredReplacementIds(request: RequestRecord, stageId: string) {

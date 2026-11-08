@@ -47,7 +47,7 @@ export function readRoutes(db: DatabaseSync, origin: string, sessionToken: (requ
     const token = sessionToken(req);
     if (!record || !token) { res.status(404).json({ error: 'Request not found.' }); return; }
     const { version, updatedAt } = req.body ?? {};
-    if (!['Admin Work Request', 'Administrative & Payment Request', 'IT Request', 'Cash Voucher', 'Expense Claim'].includes(record.formType)
+    if (!['Admin Work Request', 'Administrative & Payment Request', 'IT Request', 'Cash Voucher', 'Expense Claim', 'R&D Initiative'].includes(record.formType)
       || !Number.isSafeInteger(version) || (version !== record.documentVersion && !(record.versionSnapshots ?? []).some(item => item.version === version))) {
       res.status(404).json({ error: 'Document version unavailable.' }); return;
     }

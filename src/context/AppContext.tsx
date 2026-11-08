@@ -120,6 +120,7 @@ interface AppContextType {
   acceptReplacement: (id: string, accept: boolean) => Promise<{ success: boolean; error?: string }>;
   readLatestRoute: (id: string) => Promise<RequestRecord | null>;
   downloadDocumentPdf?: (id: string, version: number, updatedAt: string) => Promise<Blob>;
+  saveRndEvaluation: (id: string, evaluation: import('../types').RndFormData) => Promise<{ success: boolean; error?: string }>;
   cancelRoute: (id: string, reason: string) => Promise<{ success: boolean; error?: string }>;
   recordRouteProcessing: (id: string, action: import('../utils/routeProcessing').ProcessingCommand, note: string, signatureDataUrl?: string, attachment?: AttachmentItem) => Promise<{ success: boolean; error?: string }>;
   directorOverrideAction: (
@@ -391,7 +392,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
     const validation = validateOriginatingCompany(selectedScope, formData.companyId, currentUser.companyId);
     if (!validation.isValid || !validation.companyId) return { success: false, error: validation.error };
     try {
-      const formType = formData.cashVoucher ? 'Cash Voucher'
+      const formType = formData.rnd ? 'R&D Initiative' : formData.cashVoucher ? 'Cash Voucher'
         : formData.expenseClaim ? 'Expense Claim'
         : formData.itRequest ? 'IT Request'
         : formData.administrativePayment ? 'Administrative & Payment Request' : 'Admin Work Request';
@@ -406,7 +407,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
       const input: SubmitInput = { companyId: validation.companyId, formType,
         signerChoices,
         expectedWorkflowVersion: legacy ? undefined : workflow?.version,
-        formData: { dateOfRequest: formData.dateOfRequest, department: formData.department, priority: formData.priority, workDescription: formData.workDescription, documents: formData.documents, administrativePayment: formData.administrativePayment, itRequest: formData.itRequest, cashVoucher: formData.cashVoucher, expenseClaim: formData.expenseClaim },
+        formData: { dateOfRequest: formData.dateOfRequest, department: formData.department, priority: formData.priority, workDescription: formData.workDescription, documents: formData.documents, administrativePayment: formData.administrativePayment, itRequest: formData.itRequest, cashVoucher: formData.cashVoucher, expenseClaim: formData.expenseClaim, rnd: formData.rnd },
         attachments, comment, signatureDataUrl: signatureDataUrl || '' };
       const record = draftCoordinator && legacy
         ? await draftCoordinator.submit(validation.companyId, currentUserId, input)
@@ -418,7 +419,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
       }
       return { success: true, newId: record.id };
     } catch (error) {
-      if ((formData.administrativePayment || formData.itRequest || formData.cashVoucher || formData.expenseClaim) && error instanceof ApiError && error.status === 409) {
+      if ((formData.administrativePayment || formData.itRequest || formData.cashVoucher || formData.expenseClaim || formData.rnd) && error instanceof ApiError && error.status === 409) {
         try {
           const [latestWorkflows, latestUsers] = await Promise.all([actionRepository.getWorkflows(), actionRepository.getUsers()]);
           setWorkflows(latestWorkflows);
@@ -459,7 +460,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
   const resubmitRequest = (id: string, formData: AdminWorkFormData, changeNote?: string, signatureDataUrl?: string, attachments?: AttachmentItem[]) => runAction(id, () => actionRepository.resubmit(id, {
     expectedRevision: revisionOf(id), formData: {
       dateOfRequest: formData.dateOfRequest, department: formData.department, priority: formData.priority,
-      workDescription: formData.workDescription, documents: formData.documents, itRequest: formData.itRequest,
+      workDescription: formData.workDescription, documents: formData.documents, itRequest: formData.itRequest, rnd: formData.rnd && { ...formData.rnd, fields: Object.fromEntries(Object.entries(formData.rnd.fields).filter(([id]) => !id.startsWith('inpH'))), choices: Object.fromEntries(Object.entries(formData.rnd.choices).filter(([id]) => !id.startsWith('h'))) },
       administrativePayment: formData.administrativePayment && {
         documentDescription: formData.administrativePayment.documentDescription, payment: formData.administrativePayment.payment,
       },
@@ -471,6 +472,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
   const readLatestRoute = (id: string) => actionRepository.getRequestById(id);
   const replaceSigner = (id: string, stageId: string, newUserId: string, reason: string) => runAction(id, () => actionRepository.replaceSigner(id,{ expectedRevision: revisionOf(id), stageId, newUserId, reason }));
   const acceptReplacement = (id: string, accept: boolean) => runAction(id, () => actionRepository.acceptReplacement(id,{ expectedRevision: revisionOf(id), accept }));
+  const saveRndEvaluation: AppContextType['saveRndEvaluation'] = (id, evaluation) => runAction(id, () => actionRepository.saveRndEvaluation(id, { expectedRevision: revisionOf(id), evaluation }));
   const cancelRoute = (id: string, reason: string) => runAction(id, () => actionRepository.cancel(id, { expectedRevision: revisionOf(id), reason }));
   const recordRouteProcessing: AppContextType['recordRouteProcessing'] = (id, action, note, signatureDataUrl, attachment) => runAction(id, () => actionRepository.recordProcessing(id, { expectedRevision: revisionOf(id), action, note, signatureDataUrl, attachment }));
   const directorOverrideAction = (id: string, reason: string, signatureDataUrl?: string) => runAction(id, () => actionRepository.override(id, { expectedRevision: revisionOf(id), reason, signatureDataUrl: signatureDataUrl || '' }));
@@ -542,7 +544,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
         resubmitRequest,
         rejectRequestAction,
         directorOverrideAction,
-        cancelRoute,
+        saveRndEvaluation,
+      cancelRoute,
         recordRouteProcessing,
         replaceSigner,
         acceptReplacement,

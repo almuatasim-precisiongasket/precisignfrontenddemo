@@ -14,6 +14,7 @@ export function validateWorkflow(db: DatabaseSync, value: any): WorkflowConfig {
   text(value.id,150);
   if (!['PEW', 'ICCL', 'FSG'].includes(value.companyId) || !SUBMITTABLE_FORMS.includes(value.formType) || value.returnBehavior !== 'restart_workflow' || !['archive','notify_requester'].includes(value.rejectionBehavior)) throw new RequestError(400,'Unsupported workflow.');
   const directory = value.signerSelection === 'company-directory';
+  if (value.formType === 'R&D Initiative' && !directory) throw new RequestError(400, 'R&D uses company-directory signing routes.');
   if (directory && value.formType === 'Admin Work Request') throw new RequestError(400, 'Use the current forms for directory routes.');
   if (value.signerSelection !== undefined && !directory) throw new RequestError(400, 'Invalid signer selection.');
   if (value.allowFinalBypass !== undefined && typeof value.allowFinalBypass !== 'boolean') throw new RequestError(400, 'Invalid completion policy.');

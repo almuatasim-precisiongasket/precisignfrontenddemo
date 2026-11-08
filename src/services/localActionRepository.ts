@@ -1,3 +1,4 @@
+import { saveRndEvaluation, validateRnd } from '../utils/rndWorkflow';
 import { proposeSignerReplacement, acceptSignerReplacement } from '../utils/routeReplacement';
 import { LocalStoragePreciSignRepository } from './repository';
 import { ApiError } from './apiTypes';
@@ -28,6 +29,7 @@ export class LocalActionRepository extends LocalStoragePreciSignRepository imple
     return this.serialized(async () => {
       this.requireSignature(input.signatureDataUrl);
       const actor = await this.actor();
+      if (input.formType === 'R&D Initiative') { const error = validateRnd(input.formData.rnd, false); if (error) throw new ApiError(400, error); }
       const workflow = await this.getWorkflow(input.companyId, input.formType);
       if (!workflow) throw new ApiError(400, 'Workflow is not configured.');
       if (input.formType !== 'Admin Work Request' && workflow.version !== input.expectedWorkflowVersion) {
@@ -46,7 +48,7 @@ export class LocalActionRepository extends LocalStoragePreciSignRepository imple
         throw new ApiError(400, 'Choose an eligible voucher recipient.');
       }
       const record = createNewRequestRecord({ id: `${input.companyId}-AW-${new Date().getFullYear()}-${crypto.randomUUID()}`, formType: input.formType,
-        formData: { ...input.formData, companyId: input.companyId, companyName: company!.fullName, requesterId: actor.id, requesterName: actor.name },
+        formData: { ...input.formData, companyId: input.companyId, companyName: company!.fullName, companyLogoDataUrl: company?.logoDataUrl, requesterId: actor.id, requesterName: actor.name },
         requester: actor, workflowConfig: selection.workflow, users, attachments: input.attachments, comment: input.comment, signatureDataUrl: input.signatureDataUrl });
       const versioned: VersionedRequest = { ...record, omittedSigningSteps: selection.omittedSigningSteps, revision: 1 }; await this.createRequest(versioned); return versioned;
     });
@@ -65,6 +67,7 @@ export class LocalActionRepository extends LocalStoragePreciSignRepository imple
       await this.updateRequest(updated); return updated;
     });
   }
+  saveRndEvaluation(id: string, input: Parameters<RequestActions['saveRndEvaluation']>[1]) { return this.change(id, input.expectedRevision, (request, actor) => saveRndEvaluation(request, actor, input.evaluation)); }
   approve(id: string, input: ApprovalInput) { return this.change(id, input.expectedRevision, (request, actor) => { this.requireSignature(input.signatureDataUrl); return approveRequestStage({ request, actingUser: actor, ...input }); }); }
   returnForCorrection(id: string, input: ReasonInput) { return this.change(id, input.expectedRevision, (request, actor) => returnRequestForCorrection({ request, actingUser: actor, reason: input.reason })); }
   reject(id: string, input: ReasonInput) { return this.change(id, input.expectedRevision, (request, actor) => rejectRequest({ request, actingUser: actor, reason: input.reason })); }

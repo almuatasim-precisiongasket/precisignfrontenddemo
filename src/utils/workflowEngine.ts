@@ -1,3 +1,4 @@
+import { rndEvaluationComplete, isEvaluationField } from './rndWorkflow';
 import {
   RequestRecord,
   WorkflowConfig,
@@ -228,18 +229,23 @@ export function approveRequestStage(params: {
     };
   }
 
-  const nextApprover = !isFinalStage ? updatedSteps[nextStageIndex] : undefined;
+  const evaluationNeeded = request.formType === 'R&D Initiative' && !rndEvaluationComplete(updatedFormData.rnd);
+  const nextApprover = !isFinalStage ? updatedSteps[nextStageIndex] : evaluationNeeded ? updatedSteps.at(-1) : undefined;
 
   const updatedRequest: RequestRecord = {
     ...request,
     updatedAt: now,
-    status: isFinalStage ? 'Approved' : 'Pending Approval',
-    currentStageIndex: isFinalStage ? request.currentStageIndex : nextStageIndex,
+    status: isFinalStage && !evaluationNeeded ? 'Approved' : 'Pending Approval',
+    currentStageIndex: isFinalStage ? (evaluationNeeded ? finalIndex : request.currentStageIndex) : nextStageIndex,
     currentApproverId: nextApprover?.assignedUserId,
     currentApproverName: nextApprover?.assignedUserName,
     approvalSteps: updatedSteps,
     approvalHistory: [...request.approvalHistory, newHistoryItem],
     formData: updatedFormData,
+    ...(request.formType === 'R&D Initiative' ? { rndSignedStates: [...(request.rndSignedStates ?? []), {
+      version: request.documentVersion, stageId: currentStep.stageId, actorId: actingUser.id, at: now,
+      signatureDataUrl: signatureDataUrl || actingUser.signatureDataUrl, formData: structuredClone(updatedFormData),
+    }] } : {}),
   };
 
   return { success: true, updatedRequest };
@@ -332,6 +338,12 @@ export function resubmitCorrectedRequest(params: {
 
   const enrichedFormData: AdminWorkFormData = {
     ...updatedFormData,
+    ...(request.formType === 'R&D Initiative' ? { rndEvaluationUpdatedAfterSigning: undefined } : {}),
+    ...(request.formType === 'R&D Initiative' && updatedFormData.rnd ? { rnd: {
+      ...updatedFormData.rnd,
+      fields: Object.fromEntries(Object.entries(updatedFormData.rnd.fields).filter(([id]) => !isEvaluationField(id))),
+      choices: Object.fromEntries(Object.entries(updatedFormData.rnd.choices).filter(([id]) => !isEvaluationField(id))),
+    } } : {}),
     ...(updatedFormData.administrativePayment && {
       administrativePayment: { ...updatedFormData.administrativePayment, departmentHeadSignature: undefined },
     }),
@@ -374,7 +386,7 @@ export function resubmitCorrectedRequest(params: {
     formData: enrichedFormData,
     attachments: attachments ?? request.attachments,
     versionSnapshots: [
-      ...request.versionSnapshots,
+      ...request.versionSnapshots.map(snapshot => request.formType === 'R&D Initiative' && snapshot.version === request.documentVersion ? { ...snapshot, formData: structuredClone(request.formData) } : snapshot),
       {
         version: nextVersion,
         updatedAt: now,
@@ -470,6 +482,7 @@ export function completePreciRoute(params: { request: RequestRecord; actingUser:
   if (request.status !== 'Pending Approval' || request.requesterId === actingUser.id || !canUserAccessCompany(actingUser, request.companyId) || request.approvalSteps.at(-1)?.assignedUserId !== actingUser.id) {
     return { success: false, error: 'Only the assigned final approver can complete an open PreciRoute.' };
   }
+  if (request.formType === 'R&D Initiative' && !rndEvaluationComplete(request.formData.rnd)) return { success: false, error: 'Save an evaluation decision and recommended next action before completing.' };
   if (!reason?.trim()) return { success: false, error: 'A completion reason is required.' };
   if (request.approvalSteps.slice(0, -1).some(step => step.status !== 'Approved'
     && request.workflowConfig.stages.find(stage => stage.id === step.stageId)?.mustSign)) {

@@ -19,6 +19,37 @@ export async function createDemoDocumentPdf(request: RequestRecord, version: num
     const element = host.firstElementChild as HTMLElement | null;
     if (!element) throw new Error('The form could not be rendered.');
     await Promise.all(Array.from(element.querySelectorAll('img'), image => image.decode().catch(() => undefined)));
+    if (request.formType === 'R&D Initiative') {
+      const pdf = await PDFDocument.create();
+      for (const sheet of element.querySelectorAll<HTMLElement>('.a4-sheet')) {
+        // Capture each sheet at the same origin. Capturing a second sheet below a fixed
+        // off-screen host can omit its upper content in browser canvas rendering.
+        const capture = window.document.createElement('div');
+        capture.className = 'rnd-document';
+        capture.style.cssText = 'position:absolute;left:-10000px;top:0;background:white';
+        capture.appendChild(sheet.cloneNode(true));
+        window.document.body.appendChild(capture);
+        let canvas: HTMLCanvasElement;
+        try {
+          canvas = await html2canvas(capture.firstElementChild as HTMLElement, { scale: 2, backgroundColor: '#ffffff', logging: false });
+        } finally { capture.remove(); }
+        const nominalHeight = Math.round(canvas.width * 297 / 210);
+        // Browser rounding and sheet borders can add a few pixels; do not create a blank tail page.
+        const pagePixels = canvas.height <= nominalHeight + 32 ? canvas.height : nominalHeight;
+        for (let offset = 0; offset < canvas.height; offset += pagePixels) {
+          const slice = window.document.createElement('canvas');
+          slice.width = canvas.width;
+          slice.height = Math.min(pagePixels, canvas.height - offset);
+          const context = slice.getContext('2d');
+          if (!context) throw new Error('The R&D document could not be rendered.');
+          context.drawImage(canvas, 0, offset, canvas.width, slice.height, 0, 0, canvas.width, slice.height);
+          const image = await pdf.embedPng(slice.toDataURL('image/png'));
+          const height = Math.min(841.89, slice.height * 595.28 / canvas.width);
+          pdf.addPage([595.28, 841.89]).drawImage(image, { x: 0, y: 841.89 - height, width: 595.28, height });
+        }
+      }
+      return new Blob([new Uint8Array(await pdf.save())], { type: 'application/pdf' });
+    }
     const landscape = request.formType === 'Cash Voucher';
     if (landscape) {
       host.style.width = '277mm';
