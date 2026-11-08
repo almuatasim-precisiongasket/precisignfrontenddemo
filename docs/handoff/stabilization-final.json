@@ -1,0 +1,31 @@
+{
+  "verifiedUTC": "2026-11-08T19:41:47.302874+00:00",
+  "head": "6c372e6ee58fe8a00af48868eb1f47f8040440c4",
+  "preexistingFilesChangedByTask": [
+    "AGENTS.md",
+    "docs/navigation/feature-index.md"
+  ],
+  "newDocumentation": [
+    "docs/testing/verification.md",
+    "docs/handoff/stabilization-baseline.json",
+    "docs/handoff/stabilization.md",
+    "docs/handoff/stabilization-final.json"
+  ],
+  "sha256": {
+    "AGENTS.md": "42d6828b9c326f42255bae7d8973fcc1678956c0fe16903783e8f0d6b6d6191d",
+    "docs/navigation/feature-index.md": "6ea8f171be0c3a83485c0505e98bfe54f3ac84e394b1cb6f6f98d2bd99d8ea33",
+    "docs/testing/verification.md": "1b2e5f70e07492a4b08d80b4525d09c6e64fed9586cf3475e7bebff6763158a5",
+    "docs/handoff/stabilization-baseline.json": "5af049aa2f7edbaccff858e3dfcd8995c40cc97eed6774e35610ac5ed7c5b8c4",
+    "docs/handoff/stabilization.md": "3de51681cf065ee2fd8dd00f0616b71798d472c7f29cb11233ca6f5b43c7eb7e"
+  },
+  "applicationSourcePreserved": true,
+  "historicalWorktree": "Not edited or executed; not a fresh verification of its contents",
+  "tests": {
+    "total": 71,
+    "pass": 71,
+    "fail": 0,
+    "skip": 0
+  },
+  "types": "PASS",
+  "temporaryBuild": "PASS"
+}
