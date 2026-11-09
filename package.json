@@ -25,7 +25,12 @@
     "test:server": "tsx --test server/server.test.ts server/bootstrap-pilot.test.ts server/accountAdmin.test.ts server/pilotAccess.test.ts server/reads.test.ts server/requests.test.ts server/requests.boundaries.test.ts server/drafts.test.ts server/profile.test.ts server/workflows.test.ts server/multiCompanySubmission.test.ts",
     "test:document": "tsx --test src/components/document/AdminWorkRequestDocument.test.ts",
     "test:api": "tsx --test src/services/apiRepository.test.ts src/services/apiSession.test.ts src/services/draftCoordinator.test.ts",
-    "build:vercel": "node scripts/build-vercel.mjs"
+    "build:vercel": "node scripts/build-vercel.mjs",
+    "dev:showcase": "vite --mode showcase --port=3195 --host=127.0.0.1",
+    "build:showcase": "vite build --mode showcase",
+    "test:showcase": "tsx --test src/data/showcaseData.test.ts",
+    "verify:showcase:build": "node scripts/verify-showcase-build.mjs",
+    "test:showcase:browser": "node scripts/verify-showcase.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

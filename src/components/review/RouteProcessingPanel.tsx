@@ -1,17 +1,18 @@
 import { useState } from 'react';
+import { Clock } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { RequestRecord } from '../../types';
 import { canRecordProcessing, isFinanceHeld, pendingProcessing, processingLabels, processingRequiresSignature, type ProcessingAction } from '../../utils/routeProcessing';
 import { SignatureModal } from '../modals/SignatureModal';
 
 const waitingLabels: Record<ProcessingAction, string> = {
-  itWork: 'With IT',
-  payment: 'With Accounts',
-  adminWork: 'With Admin',
-  expenseSettlement: 'With Finance',
-  cashPayout: 'Waiting for cash payout',
-  cashReceipt: 'Waiting for receiver acknowledgment',
-  cashReceiptWaiver: 'Waiting for receiver acknowledgment',
+  itWork: 'IT work pending',
+  payment: 'Payment pending',
+  adminWork: 'Admin work pending',
+  expenseSettlement: 'Expense settlement pending',
+  cashPayout: 'Cash payout pending',
+  cashReceipt: 'Awaiting receiver acknowledgment',
+  cashReceiptWaiver: 'Awaiting receiver acknowledgment',
 };
 const noteLabels: Record<ProcessingAction, string> = {
   itWork: 'IT Remarks',
@@ -49,17 +50,22 @@ export function RouteProcessingPanel({ request }: { request: RequestRecord }) {
   }
 
   return (
-    <section className="space-y-3 rounded-lg border bg-white p-4 text-sm">
-      <h3 className="text-sm font-semibold text-[#192B3C]">After signing</h3>
+    <section className="space-y-3 border-t border-workspace-line pt-3 text-sm" aria-label="Processing">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-xs font-semibold">Processing</h4>
+        {action && <p className="inline-flex items-center gap-1.5 rounded-md bg-workspace-tint px-2 py-1 text-xs font-medium text-workspace-ink">
+          <Clock aria-hidden="true" className="size-3.5 shrink-0 text-workspace-teal" />
+          {isFinanceHeld(request) ? 'Processing on hold' : waitingLabels[action]}
+        </p>}
+      </div>
       {completed.map(key => {
         const entry = request.processing![key]!;
-        return <div key={key} className="border-b pb-2">
+        return <div key={key} className="space-y-1 border-b border-workspace-line pb-2">
           <p className="font-semibold">{processingLabels[key]}</p>
           <p className="text-xs text-slate-600">{entry.byName} · {new Date(entry.at).toLocaleString()}</p>
           <p className="whitespace-pre-wrap break-words">{entry.note}</p>
         </div>;
       })}
-      {action && <p className="rounded-md border border-[#C2D5E3] bg-[#EBF2F7] px-3 py-2 text-xs font-semibold text-[#192B3C]">{isFinanceHeld(request) ? 'Processing on hold' : waitingLabels[action]}</p>}
       {action && canRecordProcessing(request, currentUser, action) && (
         <form onSubmit={event => {
           event.preventDefault();

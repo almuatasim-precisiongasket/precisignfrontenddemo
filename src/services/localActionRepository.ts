@@ -5,15 +5,16 @@ import { ApiError } from './apiTypes';
 import type { ApprovalInput, OverrideInput, ReasonInput, RequestActions, ResubmitInput, SubmitInput, VersionedRequest } from './apiTypes';
 import { approveRequestStage, createNewRequestRecord, cancelPreciRoute, completePreciRoute, rejectRequest, resubmitCorrectedRequest, returnRequestForCorrection } from '../utils/workflowEngine';
 import type { RequestRecord, UserProfile } from '../types/index';
-import { canUserAccessCompany } from '../utils/companyAccess';
+import { canUserAccessCompany, canUserStartForm } from '../utils/companyAccess';
 import { recordProcessing } from '../utils/routeProcessing';
 import { expenseEvidenceError, preservesExpenseReceipts } from '../utils/expenseEvidence';
 import { applySignerChoices } from '../utils/signingSelection';
+import type { DemoDataset } from '../data/showcaseData';
 
 /** Explicit demo adapter. Actor is supplied by demo persona selection, never an API body. */
 export class LocalActionRepository extends LocalStoragePreciSignRepository implements RequestActions {
   private queue: Promise<unknown> = Promise.resolve();
-  constructor(private actorId: string, storage?: Storage) { super(storage); }
+  constructor(private actorId: string, storage?: Storage, dataset?: DemoDataset) { super(storage, dataset); }
   private serialized<T>(work: () => Promise<T>): Promise<T> {
     const result = this.queue.then(work); this.queue = result.catch(() => {}); return result;
   }
@@ -30,6 +31,7 @@ export class LocalActionRepository extends LocalStoragePreciSignRepository imple
       this.requireSignature(input.signatureDataUrl);
       const actor = await this.actor();
       if (input.formType === 'R&D Initiative') { const error = validateRnd(input.formData.rnd, false); if (error) throw new ApiError(400, error); }
+      if (!canUserStartForm(actor, input.companyId, input.formType)) throw new ApiError(403, 'Company or form access denied.');
       const workflow = await this.getWorkflow(input.companyId, input.formType);
       if (!workflow) throw new ApiError(400, 'Workflow is not configured.');
       if (input.formType !== 'Admin Work Request' && workflow.version !== input.expectedWorkflowVersion) {

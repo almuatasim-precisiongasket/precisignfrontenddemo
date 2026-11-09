@@ -1,3 +1,4 @@
+import { isShowcaseBuild } from '../../config/demo';
 import { ArrowRight, CreditCard, FileText, Monitor, Receipt, Sliders } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { canConfigureSigningRoutes } from '../../utils/workflowAdministration';
@@ -42,7 +43,7 @@ export function FormsLibraryView({ initialForm }: { initialForm?: LibraryEditorF
   const { setSelectedRequestFormType, setActiveView, selectedCompany, selectedScope, currentUser, users, workflows, companies, readOnly: connected } = useApp();
   const openForm = initialForm;
   const scopedCompanies = companies.filter(company => selectedScope === 'PEG' || company.id === selectedScope);
-  const visibleForms = companyForms.filter(form => !connected || scopedCompanies.some(company => canUserStartForm(currentUser, company.id, form.name)));
+  const visibleForms = companyForms.filter(form => (!connected && !isShowcaseBuild) || scopedCompanies.some(company => canUserStartForm(currentUser, company.id, form.name)));
   const editorKey = [currentUser.id, selectedScope, openForm].join(':');
   const closeForm = () => setActiveView('forms-library');
 
@@ -64,7 +65,7 @@ export function FormsLibraryView({ initialForm }: { initialForm?: LibraryEditorF
           <h1 className="text-2xl font-semibold tracking-tight text-workspace-ink sm:text-3xl">Forms Library</h1>
           <p className="mt-1 text-sm text-slate-600">{selectedScope === 'PEG' ? 'Group View · Choose a form, then select the legal company it belongs to.' : selectedCompany.fullName}</p>
         </div>
-        {(!connected || canConfigureSigningRoutes(currentUser)) && <button type="button" onClick={() => setActiveView('workflow-settings')} className="workspace-control inline-flex min-h-10 items-center gap-2 px-4 text-sm font-semibold">
+        {((!connected && !isShowcaseBuild) || canConfigureSigningRoutes(currentUser)) && <button type="button" onClick={() => setActiveView('workflow-settings')} className="workspace-control inline-flex min-h-10 items-center gap-2 px-4 text-sm font-semibold">
           <Sliders className="size-4" aria-hidden="true" /> Signing routes
         </button>}
       </header>

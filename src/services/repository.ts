@@ -1,3 +1,5 @@
+import { activeDemoDataset } from '../data/demoDataset';
+import type { DemoDataset } from '../data/showcaseData';
 import { currentCompanyDisplay } from '../utils/companyDisplay';
 import {
   Company,
@@ -10,12 +12,6 @@ import {
   AdminWorkFormData,
   AdminWorkDraft,
 } from '../types/index';
-import {
-  INITIAL_COMPANIES,
-  INITIAL_USERS,
-  INITIAL_WORKFLOWS,
-  INITIAL_REQUESTS,
-} from '../data/seedData';
 
 /**
  * Repository interface defining data contracts for PreciSign.
@@ -102,8 +98,12 @@ const STORAGE_KEYS = {
 export class LocalStoragePreciSignRepository implements IPreciSignRepository {
   private customStorage?: Storage;
 
-  constructor(customStorage?: Storage) {
+  protected keys: typeof STORAGE_KEYS;
+  constructor(customStorage?: Storage, protected dataset: DemoDataset = activeDemoDataset) {
     this.customStorage = customStorage;
+    this.keys = dataset.namespace
+      ? Object.fromEntries(Object.entries(STORAGE_KEYS).map(([name]) => [name, `${dataset.namespace}_${name.toLowerCase()}${name === 'DRAFTS_PREFIX' ? '_' : ''}`])) as typeof STORAGE_KEYS
+      : STORAGE_KEYS;
   }
 
   private getStorage(): Storage | null {
@@ -119,14 +119,14 @@ export class LocalStoragePreciSignRepository implements IPreciSignRepository {
     return this.getStorage() !== null;
   }
 
-  private getItem<T>(key: string, fallback: T): T {
+  protected getItem<T>(key: string, fallback: T): T {
     const storage = this.getStorage();
     if (!storage) throw new Error('Storage is unavailable.');
     const data = storage.getItem(key);
     return data === null ? fallback : JSON.parse(data);
   }
 
-  private setItem<T>(key: string, value: T): void {
+  protected setItem<T>(key: string, value: T): void {
     const storage = this.getStorage();
     if (!storage) throw new Error('Storage is unavailable.');
     storage.setItem(key, JSON.stringify(value));
@@ -139,7 +139,7 @@ export class LocalStoragePreciSignRepository implements IPreciSignRepository {
   }
 
   async getCompanies(): Promise<Company[]> {
-    return this.getItem<Company[]>(STORAGE_KEYS.COMPANIES, INITIAL_COMPANIES).map(currentCompanyDisplay);
+    return this.getItem<Company[]>(this.keys.COMPANIES, this.dataset.companies).map(currentCompanyDisplay);
   }
 
   async getCompanyById(id: CompanyId): Promise<Company | null> {
@@ -148,7 +148,7 @@ export class LocalStoragePreciSignRepository implements IPreciSignRepository {
   }
 
   async getUsers(): Promise<UserProfile[]> {
-    return this.getItem<UserProfile[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+    return this.getItem<(UserProfile & { isDisabled?: boolean })[]>(this.keys.USERS, this.dataset.users).filter(user => !user.isDisabled);
   }
 
   async getUserById(id: string): Promise<UserProfile | null> {
@@ -179,12 +179,12 @@ export class LocalStoragePreciSignRepository implements IPreciSignRepository {
       throw new Error(`User with ID ${userId} not found.`);
     }
 
-    this.setItem(STORAGE_KEYS.USERS, updatedUsers);
+    this.setItem(this.keys.USERS, updatedUsers);
     return updatedUser;
   }
 
   async getWorkflows(scope?: ViewingScope): Promise<WorkflowConfig[]> {
-    const workflows = this.getItem<WorkflowConfig[]>(STORAGE_KEYS.WORKFLOWS, INITIAL_WORKFLOWS);
+    const workflows = this.getItem<WorkflowConfig[]>(this.keys.WORKFLOWS, this.dataset.workflows);
     if (scope && scope !== PARENT_ORGANIZATION_ID) {
       return workflows.filter((w) => w.companyId === scope);
     }
@@ -207,12 +207,12 @@ export class LocalStoragePreciSignRepository implements IPreciSignRepository {
     } else {
       updatedList = [...workflows, workflow];
     }
-    this.setItem(STORAGE_KEYS.WORKFLOWS, updatedList);
+    this.setItem(this.keys.WORKFLOWS, updatedList);
     return workflow;
   }
 
   async getRequests(scope?: ViewingScope): Promise<RequestRecord[]> {
-    const requests = this.getItem<RequestRecord[]>(STORAGE_KEYS.REQUESTS, INITIAL_REQUESTS);
+    const requests = this.getItem<RequestRecord[]>(this.keys.REQUESTS, this.dataset.requests);
     if (scope && scope !== PARENT_ORGANIZATION_ID) {
       return requests.filter((r) => r.companyId === scope);
     }
@@ -227,14 +227,14 @@ export class LocalStoragePreciSignRepository implements IPreciSignRepository {
   async createRequest(record: RequestRecord): Promise<RequestRecord> {
     const requests = await this.getRequests();
     const updated = [record, ...requests];
-    this.setItem(STORAGE_KEYS.REQUESTS, updated);
+    this.setItem(this.keys.REQUESTS, updated);
     return record;
   }
 
   async updateRequest(record: RequestRecord): Promise<RequestRecord> {
     const requests = await this.getRequests();
     const updated = requests.map((r) => (r.id === record.id ? record : r));
-    this.setItem(STORAGE_KEYS.REQUESTS, updated);
+    this.setItem(this.keys.REQUESTS, updated);
     return record;
   }
 
@@ -243,7 +243,7 @@ export class LocalStoragePreciSignRepository implements IPreciSignRepository {
     requesterId: string,
     formType: string
   ): Promise<AdminWorkDraft | null> {
-    const key = `${STORAGE_KEYS.DRAFTS_PREFIX}${scope}_${requesterId}_${formType}`;
+    const key = `${this.keys.DRAFTS_PREFIX}${scope}_${requesterId}_${formType}`;
     return this.getItem<AdminWorkDraft | null>(key, null);
   }
 
@@ -253,7 +253,7 @@ export class LocalStoragePreciSignRepository implements IPreciSignRepository {
     formType: string,
     draft: AdminWorkDraft
   ): Promise<void> {
-    const key = `${STORAGE_KEYS.DRAFTS_PREFIX}${scope}_${requesterId}_${formType}`;
+    const key = `${this.keys.DRAFTS_PREFIX}${scope}_${requesterId}_${formType}`;
     this.setItem(key, draft);
   }
 
@@ -262,33 +262,30 @@ export class LocalStoragePreciSignRepository implements IPreciSignRepository {
     requesterId: string,
     formType: string
   ): Promise<void> {
-    const key = `${STORAGE_KEYS.DRAFTS_PREFIX}${scope}_${requesterId}_${formType}`;
+    const key = `${this.keys.DRAFTS_PREFIX}${scope}_${requesterId}_${formType}`;
     this.removeItem(key);
   }
 
   async getDemoSession(): Promise<{ companyId: ViewingScope; userId: string }> {
-    return this.getItem<{ companyId: ViewingScope; userId: string }>(STORAGE_KEYS.SESSION, {
-      companyId: 'PEW',
-      userId: 'user-afzal',
-    });
+    return this.getItem<{ companyId: ViewingScope; userId: string }>(this.keys.SESSION, this.dataset.session);
   }
 
   async saveDemoSession(companyId: ViewingScope, userId: string): Promise<void> {
-    this.setItem(STORAGE_KEYS.SESSION, { companyId, userId });
+    this.setItem(this.keys.SESSION, { companyId, userId });
   }
 
   async resetToSeedData(): Promise<void> {
-    this.setItem(STORAGE_KEYS.REQUESTS, INITIAL_REQUESTS);
-    this.setItem(STORAGE_KEYS.WORKFLOWS, INITIAL_WORKFLOWS);
-    this.setItem(STORAGE_KEYS.USERS, INITIAL_USERS);
-    this.setItem(STORAGE_KEYS.COMPANIES, INITIAL_COMPANIES);
-    this.setItem(STORAGE_KEYS.SESSION, { companyId: 'PEW', userId: 'user-afzal' });
+    this.setItem(this.keys.REQUESTS, this.dataset.requests);
+    this.setItem(this.keys.WORKFLOWS, this.dataset.workflows);
+    this.setItem(this.keys.USERS, this.dataset.users);
+    this.setItem(this.keys.COMPANIES, this.dataset.companies);
+    this.setItem(this.keys.SESSION, this.dataset.session);
     const storage = this.getStorage();
     if (storage) {
       // Clear draft keys
       for (let i = storage.length - 1; i >= 0; i--) {
         const k = storage.key(i);
-        if (k && k.startsWith(STORAGE_KEYS.DRAFTS_PREFIX)) {
+        if (k && k.startsWith(this.keys.DRAFTS_PREFIX)) {
           storage.removeItem(k);
         }
       }

@@ -6,7 +6,7 @@ import { DraftConfirmDialog } from './DraftConfirmDialog';
 import { useFieldErrors } from './useFieldErrors';
 import React, { useState, useEffect, useRef } from 'react';
 import { ApiError } from '../../services/apiTypes';
-import { useApp } from '../../context/AppContext';
+import { useApp, useUnsavedWork } from '../../context/AppContext';
 import { AdminWorkFormData, PriorityLevel, AttachmentItem, CompanyId } from '../../types/index';
 import { AdminWorkRequestDocument } from '../document/AdminWorkRequestDocument';
 import { AdministrativePaymentDocument } from '../document/AdministrativePaymentDocument';
@@ -125,6 +125,8 @@ export const CreateRequestView: React.FC = () => {
   const [feedbackSuccess, setFeedbackSuccess] = useState<string | null>(null);
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(null);
   const [activeMobileTab, setActiveMobileTab] = useState<'editor' | 'preview'>('editor');
+
+  useUnsavedWork(JSON.stringify({ originatingCompanyId, dateOfRequest, department, priority, workDescription, documents, documentDescription, payment, choices, pendingUploads, attachments: attachments.map(file => file.id) }));
 
   const resolvedCompany = companies.find((c) => c.id === originatingCompanyId) || selectedCompany;
   const signingWorkflow = workflows.find(workflow => workflow.companyId === originatingCompanyId && workflow.formType === formName && workflow.stages.length > 0);

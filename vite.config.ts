@@ -3,13 +3,16 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
 
-export default defineConfig(() => {
+export default defineConfig(({ mode }) => {
+  const showcase = mode === 'showcase' || process.env.PRECISIGN_SHOWCASE === 'true' || process.env.VITE_SHOWCASE === 'true';
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
-      alias: {
-        '@': path.resolve(__dirname, '.'),
-      },
+      alias: [
+        { find: '@', replacement: path.resolve(__dirname, '.') },
+        // Exclude the older staff/sample fixtures from the public showcase bundle.
+        ...(showcase ? [{ find: /^(?:.*\/)?seedData(?:\.ts)?$/, replacement: path.resolve(__dirname, 'src/data/showcaseBase.ts') }] : []),
+      ],
     },
     server: {
       proxy: {

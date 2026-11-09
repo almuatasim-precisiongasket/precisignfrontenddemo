@@ -1,61 +1,34 @@
-# AGENTS.md — Guidance for Future AI Coding Agents (Codex & Assistants)
+# PreciSign: instructions for coding agents
 
-For new pilot work, confirm the `Pre-Production` branch and read the [pre-production handoff](docs/PRE_PRODUCTION.md). Keep existing authorization and document rules in force while pilot account and form permissions are designed.
+## Start and discover
 
-Welcome to **PreciSign**! This document contains critical guidelines, architectural constraints, and business rules for AI coding agents maintaining or expanding this codebase.
+1. Confirm repository root, branch, HEAD, worktrees and dirty/untracked paths. Preserve existing edits. The inspected checkout is `R-and-D-form`, not a reason to switch branches. A clean clone of its HEAD does not include its local routing, review UI, showcase or refactor work.
+2. Start at the [codebase map](docs/navigation/feature-index.md). Choose the feature row, verify its symbol in source, read direct dependencies and related tests, and expand only when necessary. It is the single navigation map; do not load every architecture document or the whole AppContext/ReviewSignView by default.
+3. Consult [PRECIROUTES_SPEC](docs/PRECIROUTES_SPEC.md) and [route tasks](tasks/preciroutes.md) when changing business behavior; [PRE_PRODUCTION](docs/PRE_PRODUCTION.md) for pilot intent. These contain historical targets and implementation claims that can be stale. The map identifies known conflicts. Code inspection establishes implemented behavior, not permission to redefine company policy. Resolve conflicts explicitly.
 
----
+## Architecture and boundaries
 
-## 1. Primary Mandates
+React/TypeScript/Vite frontend; `App.tsx` owns mode/auth shell and page rendering. AppContext coordinates scoped state, drafts and actions. `src/navigation/pageRoutes.ts` and `usePageNavigation.ts` own URL navigation; use existing context navigation methods instead of adding another page state/history effect. Preserve `/rnd`, password-reset hashes and `/document-export` contracts.
 
-- **Do Not Rebuild the Frontend UI**: The React + TypeScript presentation layer, bilingual A4 document renderer, and DocuSign-inspired approval banner are finalized. Preserve existing component structure and styling.
-- **Maintain Repository Abstraction**: Decouple components from persistence using `IPreciSignRepository` defined in `src/services/repository.ts`. Do not write direct API calls or direct storage accesses inside React components.
-- **Preserve Paper Document Fidelity**: The bilingual A4 administrative request form renderer in `src/components/document/AdminWorkRequestDocument.tsx` produces official company documents. Never alter form text, layout dimensions, or paper signature positioning without explicit business authorization.
+Keep component data access behind AppContext/repository contracts: `IPreciSignRepository` in `src/services/repository.ts`, `RequestActions` in `src/services/apiTypes.ts`, API/local adapters in `src/services/`. Connected mode uses authenticated Express handlers and revisioned SQLite transactions; browser-local demo/showcase are simulations, not server security. Extend the existing stack without new dependencies or module restructuring unless the task warrants them.
 
----
+## Rules to preserve
 
-## 2. Viewing Scope vs Permission Authorization
+- A request belongs to a legal company; PEG is a viewing scope. Company access, permission to start a form, record visibility and authority to sign are separate. Explicit company/form grants take precedence; legacy profiles without explicit grants retain title/company fallbacks. Do not silently remove compatibility or broaden permissions.
+- Signing requires assignment and applicable company/state checks. The final assignee may sign early, leaving other stages open. Completion requires its signature, reason and applicable bypass authority; outstanding `mustSign` stages block it. Bypassed is never signed. `Approved` means signing complete, not payment/work fulfillment.
+- Account administration and staff titles do not confer signing authority. `directorOverrideAction`/`override` remain public legacy names for current final completion; `directorOverrideApprove` is a separate legacy helper referenced by tests. Preserve public contracts.
+- Backups are inactive until replacement. Configured-backup activation and company-directory final replacement have different authority/acceptance rules: inspect `routeReplacement.ts` before editing. Requester-only correction creates a new document version and resets approvals.
+- Preserve signature bytes, history, versions and immutable submitted company branding. This checkout does NOT contain the separate general historical-signature repair; existing snapshot code is not evidence that every historical approval image survives. Never fill missing historical images from current profiles.
+- Protect official paper-form text, typography, A4/print dimensions and signature positions, especially `src/components/document/AdminWorkRequestDocument.tsx`. Preserve the approval banner and existing form behavior. UI changes require task scope, not an unsolicited rebuild.
 
-- **Viewing Scope**: Represented by `ViewingScope = 'PEG' | CompanyId`.
-  - `'PEG'`: Parent Organization view (`PRECISION ENGINEERING GROUP`).
-  - `'PEW' | 'ICCL' | 'FSG'`: Subsidiary legal entity view.
-- **User Authorization**:
-  - `role === 'Director' || role === 'General Manager' || isGroupAdmin`: Has cross-company group privileges to view and approve requests across all subsidiaries.
-  - Standard employee: Authorized ONLY for their assigned `companyId` (or `allowedCompanyIds`).
-- **Group View Request Creation**:
-  - Requests MUST always belong to an explicit legal subsidiary company (`PEW`, `ICCL`, `FSG`).
-  - Submitting a request while in Group View (`'PEG'`) requires specifying an `originatingCompanyId`.
+## Development and verification
 
----
+Use synthetic accounts, mock storage, in-memory SQLite or fresh temporary DBs. `openDatabase` can migrate on open; never point tests, provisioning or restore at real runtime storage. Keep the separate historical-integrity worktree isolated. Do not reset/stash/clean/switch branches, discard dirty work, commit, merge, push or deploy without authorization.
 
-## 3. Workflow State Machine Rules
+Run `npm run lint` (TypeScript only, NOT ESLint), feature tests and `npm run build` for implementation changes. Preserve any existing dist output using a unique temporary `--outDir`. Required domain/repository baseline:
 
-**PreciRoutes update (4 November 2026):** For request actions, visibility, signer replacement, cancellation and completion, read `docs/PRECIROUTES_SPEC.md` and `tasks/preciroutes.md`. The confirmed PreciRoutes rules supersede conflicting legacy rules below: the assigned final user can sign early or complete with explicit bypass, regardless of job title. Cross-company visibility does not grant signing authority. Route reads require participation, configured processing-team membership or authorized leadership. The legacy Director Override helper remains for historical tests; live API/demo actions use `completePreciRoute`.
-
-1. **Submission**:
-   - Requester submission creates `status = 'Pending Approval'`, sets `currentStageIndex = 0`, and logs step 0 in `approvalHistory`.
-   - Requester submission is **not** an approval stage.
-2. **Stage Approval**:
-   - Only the user matching `approvalSteps[currentStageIndex].assignedUserId` (or matching assigned role in company context) can approve.
-   - Stage approval updates the step status to `'Approved'`, captures signature/comments, increments `currentStageIndex`, and advances `currentApproverId`.
-   - When the final stage is approved, request status transitions to `'Approved'`.
-3. **Return for Correction**:
-   - Assigned approver or Director can return a request with a required reason.
-   - Request status becomes `'Returned for Correction'`.
-   - Only the original requester can resubmit.
-   - Resubmission bumps `documentVersion` (v1 → v2), saves a version snapshot, and resets approval steps to stage index 0 (`'Pending'`).
-4. **Director Override**:
-   - Authorized when `workflowConfig.allowDirectorOverride === true` and `user.role === 'Director'`.
-   - Instantly approves all remaining stages and marks request as `'Approved'`.
-
----
-
-## 4. Test Execution
-
-All business rules, repository operations, and workflow transitions are covered by Node.js native unit tests.
-
-Before submitting changes, ensure all tests pass cleanly:
-
-```bash
-npx tsx --test src/utils/approvalJourney.test.ts src/utils/workflowEngine.test.ts src/services/repository.test.ts src/utils/companyAccess.test.ts
+```sh
+node --import tsx --test src/utils/approvalJourney.test.ts src/utils/workflowEngine.test.ts src/services/repository.test.ts src/utils/companyAccess.test.ts
 ```
+
+Choose additional commands from the map's verification section and [verification guide](docs/testing/verification.md); confirm current package scripts/setup first. Tests must establish isolation before execution. Characterization tests sometimes extract source text; diagnose harness failures without weakening assertions. Investigate protected-document hash failures by comparing Git/worktree bytes and line endings, not editing the renderer. Report actual commands/results, skips and unverified behavior; prior recorded passes are not current verification.

@@ -1,3 +1,4 @@
+import { isShowcaseBuild } from '../../config/demo';
 import { needsMyAction } from '../../utils/actionQueue';
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
@@ -204,7 +205,7 @@ export const AppHeader: React.FC<{ onSignOut?: () => void; sidebarHidden: boolea
       {/* Right: Demo Persona Switcher + Notifications + Active User */}
       <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
         {/* Explicit Demo User Persona Selector */}
-        {!readOnly && <div className="relative">
+        {!readOnly && !isShowcaseBuild && <div className="relative">
           <button
             onClick={() => setPersonaDropdownOpen(!personaDropdownOpen)}
             className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-2.5 py-1.5 rounded-md border border-[#365C78]/30 bg-[#EBF2F7] text-[#192B3C] hover:bg-[#DEEAF3] transition-colors text-xs font-medium"

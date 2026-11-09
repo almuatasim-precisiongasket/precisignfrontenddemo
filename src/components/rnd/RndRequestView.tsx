@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ArrowLeft, FlaskConical } from 'lucide-react';
-import { useApp } from '../../context/AppContext';
+import { useApp, useUnsavedWork } from '../../context/AppContext';
 import type { AdminWorkFormData, AttachmentItem, CompanyId, RndFormData } from '../../types';
 import { canUserStartForm } from '../../utils/companyAccess';
 import { RND_FORM } from '../../utils/rndFields';
@@ -25,6 +25,7 @@ export function RndRequestView({ onBack }: { onBack: () => void }) {
   const [uploading, setUploading] = useState(false);
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kuwait', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   const [rnd, setRnd] = useState<RndFormData>({ fields: { inpSubDate: today, inpDept: currentUser.department, inpEmpName: currentUser.name, inpContact: currentUser.email ?? '', inpGSubBy: currentUser.name, inpGDate: today }, choices: {}, marketRows: [{ sol: '', sup: '', web: '' }, { sol: '', sup: '', web: '' }] });
+  useUnsavedWork(JSON.stringify({ companyId, choices, rnd, uploading, files: files.map(file => file.id) }));
   const company = companies.find(company => company.id === (selectedScope === 'PEG' ? companyId : selectedScope) && canUserStartForm(currentUser, company.id, RND_FORM));
   const workflow = workflows.find(route => route.companyId === company?.id && route.formType === RND_FORM);
   const fields = { ...rnd, fields: { ...rnd.fields, inpCompany: company?.fullName ?? '' } };

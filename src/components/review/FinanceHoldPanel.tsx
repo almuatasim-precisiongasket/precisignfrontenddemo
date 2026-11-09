@@ -44,7 +44,7 @@ export function FinanceHoldPanel({ request }: { request: RequestRecord }) {
   }
 
   return (
-    <section className="space-y-3 rounded-lg border bg-white p-4 text-sm">
+    <section className="workspace-panel space-y-3 p-4 text-sm">
       <h3 className="font-bold">{held ? 'On hold with Finance' : 'Finance review'}</h3>
       {history.map((entry, index) => (
         <div key={index} className="border-b pb-2">

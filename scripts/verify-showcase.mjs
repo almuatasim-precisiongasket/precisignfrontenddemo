@@ -1,0 +1,68 @@
+// Small browser smoke test. A fresh browser context contains fictional showcase data only.
+import { chromium } from 'playwright-core';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { PDFDocument } from 'pdf-lib';
+
+const url = process.env.SHOWCASE_URL || 'http://127.0.0.1:3195/';
+if (!['127.0.0.1', 'localhost'].includes(new URL(url).hostname)) throw new Error('Run this smoke test against the isolated local showcase.');
+const output = process.env.SHOWCASE_OUTPUT || join(tmpdir(), 'precisign-showcase-verification');
+await mkdir(output, { recursive: true });
+const browser = await chromium.launch({ channel: process.platform === 'win32' ? 'msedge' : undefined, headless: true });
+const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+const page = await context.newPage();
+page.setDefaultTimeout(10000);
+const errors = [];
+page.on('pageerror', error => errors.push(error.message));
+const records = () => page.evaluate(async () => (await import('/src/services/repository.ts')).dataService.getRequests());
+try {
+  await page.goto(url);
+  await page.getByLabel('Demo employee').selectOption('showcase-user-2');
+  const initial = await records();
+  if (initial.length !== 15) throw new Error('The initial showcase must contain fifteen requests.');
+  await page.screenshot({ path: join(output, 'dashboard-desktop.png') });
+  const pending = initial.find(record => record.formType === 'Administrative & Payment Request');
+  await page.getByLabel('Search all requests').fill(pending.id);
+  await page.getByRole('button').filter({ hasText: pending.id }).first().click();
+  await page.getByRole('button', { name: 'Approve & sign', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm & sign', exact: true }).click();
+  await page.getByText('Signing completed', { exact: true }).first().waitFor();
+  await page.reload();
+  if ((await records()).find(record => record.id === pending.id)?.status !== 'Approved') throw new Error('Signature was not saved across refresh.');
+  await page.getByLabel('Demo employee').selectOption('showcase-user-5');
+  await page.getByRole('button', { name: 'User directory', exact: true }).click();
+  await page.getByRole('heading', { name: 'User directory', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Manage access', exact: true }).first().click();
+  await page.getByRole('dialog').waitFor();
+  await page.screenshot({ path: join(output, 'directory-access.png') });
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('button', { name: 'Forms Library', exact: true }).click();
+  if (await page.getByRole('button', { name: /^Open form:/ }).count() !== 5) throw new Error('All five forms must appear.');
+  if (await page.getByText('Ready to start', { exact: true }).count() + await page.getByText(/^Ready in /).count() !== 5) throw new Error('Each form must have usable signing routes.');
+  await page.screenshot({ path: join(output, 'library-desktop.png') });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: join(output, 'library-narrow.png') });
+  const width = await page.evaluate(() => ({ viewport: innerWidth, content: document.documentElement.scrollWidth }));
+  if (width.content > width.viewport) throw new Error(`Narrow layout overflows: ${JSON.stringify(width)}`);
+  const pdfBytes = await page.evaluate(async () => {
+    const { dataService } = await import('/src/services/repository.ts');
+    const { createDemoDocumentPdf } = await import('/src/components/document/downloadDemoPdf.tsx');
+    const record = (await dataService.getRequests()).find(record => record.formType === 'R&D Initiative' && record.status === 'Approved');
+    return Array.from(new Uint8Array(await (await createDemoDocumentPdf(record, 1)).arrayBuffer()));
+  });
+  const pdf = await PDFDocument.load(new Uint8Array(pdfBytes));
+  if (pdf.getPageCount() !== 2) throw new Error(`Expected a two-page sample R&D PDF; got ${pdf.getPageCount()}.`);
+  await writeFile(join(output, 'showcase-rnd.pdf'), Buffer.from(pdfBytes));
+  const other = await browser.newContext(); const otherPage = await other.newPage();
+  await otherPage.goto(url); await otherPage.getByLabel('Demo employee').waitFor();
+  const otherStatus = await otherPage.evaluate(async id => (await (await import('/src/services/repository.ts')).dataService.getRequestById(id)).status, pending.id);
+  if (otherStatus !== 'Pending Approval') throw new Error('A second browser inherited the first visitor’s edits.');
+  await other.close();
+  await page.getByRole('button', { name: 'Reset demo', exact: true }).click();
+  await page.getByRole('button', { name: 'Restore sample data', exact: true }).click();
+  await page.getByLabel('Demo employee').selectOption('showcase-user-2');
+  if ((await records()).find(record => record.id === pending.id)?.status !== 'Pending Approval') throw new Error('Reset did not restore the sample workflow.');
+  if (errors.length) throw new Error(errors.join('\n'));
+  console.log(JSON.stringify({ result: 'passed', requests: initial.length, forms: 5, pdfPages: pdf.getPageCount(), width, browserErrors: errors, output }, null, 2));
+} finally { await browser.close(); }
