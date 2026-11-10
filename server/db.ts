@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 
-const schemaVersion = 9;
+export const schemaVersion = 9;
 
 function readSchemaVersion(db: DatabaseSync) {
   const version = (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
@@ -23,7 +23,7 @@ export function openDatabase(path: string) {
   }
 }
 
-function migrate(db: DatabaseSync, version: number) {
+function migrate(db: Pick<DatabaseSync, 'exec'>, version: number) {
   if (version === 0) {
     db.exec(`CREATE TABLE companies (id TEXT PRIMARY KEY CHECK(id IN ('PEW','ICCL','FSG')), name TEXT NOT NULL);
         INSERT INTO companies VALUES ('PEW','Precision Engineering Works'),('ICCL','Industrial Chemical & Contracting Ltd'),('FSG','Flexi Seal Gasket Co.');
@@ -86,6 +86,16 @@ function migrate(db: DatabaseSync, version: number) {
   if (version < schemaVersion) db.exec(`PRAGMA user_version = ${schemaVersion};`);
 }
 
+/** Produce the same ordered migration statements for an async database. */
+export function migrationStatements(version: number): string[] {
+  if (!Number.isInteger(version) || version < 0 || version > schemaVersion) {
+    throw new Error('Invalid database schema version.');
+  }
+  const statements: string[] = [];
+  migrate({ exec(sql: string) { statements.push(...sql.split(';').map(part => part.trim()).filter(Boolean)); } }, version);
+  return statements;
+}
+
 export function transaction<T>(db: DatabaseSync, work: () => T): T {
   db.exec('BEGIN IMMEDIATE');
   try { const result = work(); db.exec('COMMIT'); return result; }
@@ -96,7 +106,9 @@ export function transaction<T>(db: DatabaseSync, work: () => T): T {
 }
 
 export function isDatabaseBusy(error: unknown): boolean {
+  if (!(error instanceof Error) || !('code' in error)) return false;
+  if (typeof error.code === 'string' && /^SQLITE_BUSY(?:_|$)/.test(error.code)) return true;
   // Extended SQLite result codes store the primary code in the low byte.
-  return error instanceof Error && 'code' in error && error.code === 'ERR_SQLITE_ERROR'
+  return error.code === 'ERR_SQLITE_ERROR'
     && 'errcode' in error && typeof error.errcode === 'number' && (error.errcode & 0xff) === 5;
 }

@@ -2,27 +2,62 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { openDatabase } from './db';
-import { provisionUser, createSession } from './auth';
+import { provisionUser, createSession, hashPassword } from './auth';
+import { randomUUID } from 'node:crypto';
+import { migrateAsyncDatabase, openAsyncDatabase } from './asyncDatabase';
 import { createApp } from './app';
 import { INITIAL_WORKFLOWS, INITIAL_REQUESTS } from '../src/data/seedData';
 import type { RequestRecord } from '../src/types';
 
 test('HTTP lifecycle enforces signatures, stages, revisions and correction history', async () => {
-  const db = openDatabase(':memory:');
+  const remoteUrl = process.env.PRECISIGN_TURSO_TEST_URL;
+  if (remoteUrl && new URL(remoteUrl).hostname !== 'precisign-test-muatasim.aws-ap-south-1.turso.io') throw new Error('Use the separate precisign-test database.');
+  const remote = remoteUrl ? openAsyncDatabase(remoteUrl, process.env.PRECISIGN_TURSO_TEST_TOKEN) : undefined;
+  const local = remote ? undefined : openDatabase(':memory:');
+  const db = remote ?? local!;
+  const execute = async (sql: string, ...args: (string | number)[]) => remote
+    ? (await remote.execute(sql, args)).rows
+    : local!.prepare(sql).all(...args);
+  const fixtures = new Map<string, string>();
+  const password = 'Synthetic-password-123';
+  const addUser = async (input: Parameters<typeof provisionUser>[1]) => {
+    if (!remote) return provisionUser(local!, input, password);
+    const id = randomUUID();
+    const email = `lifecycle-${id}@example.test`;
+    await execute('INSERT INTO users (id,email,name,role,department,company_id,password_hash) VALUES (?,?,?,?,?,?,?)', id, email, input.name, input.role, input.department, input.companyId, await hashPassword(password));
+    fixtures.set(id, email);
+    return id;
+  };
+  const putWorkflow = async (type: string, config: unknown) => {
+    await execute('INSERT INTO workflows VALUES (?,?,?,?)', 'PEW', type, 1, JSON.stringify(config));
+    workflowTypes.add(type);
+  };
+  const workflowTypes = new Set<string>();
+  if (remote) {
+    await migrateAsyncDatabase(remote);
+    if ((await execute('SELECT 1 FROM workflows LIMIT 1')).length) throw new Error('Turso test database must have no existing workflows.');
+  }
   const ids: string[] = [];
-  for (const [i, role] of ['Admin','General Manager','Director'].entries()) ids.push(await provisionUser(db, { email: `lifecycle${i}@example.test`, name: `Synthetic ${i}`, department: 'Test', companyId: 'PEW', role: role as any }, 'Synthetic-password-123'));
+  for (const [i, role] of ['Admin','General Manager','Director'].entries()) ids.push(await addUser({ email: `lifecycle${i}@example.test`, name: `Synthetic ${i}`, department: 'Test', companyId: 'PEW', role: role as any }));
   const workflow = { ...INITIAL_WORKFLOWS[0], stages: INITIAL_WORKFLOWS[0].stages.map((stage, i) => ({ ...stage, assignedUserId: ids[i+1] })) };
-  db.prepare('INSERT INTO workflows VALUES (?,?,?,?)').run('PEW','Admin Work Request',1,JSON.stringify(workflow));
-  const cookies = ids.map(id => `precisign_session=${createSession(db,id)}`);
+  await putWorkflow('Admin Work Request', workflow);
+  const cookies: string[] = [];
   const app = await createApp(db,{origin:'http://localhost:3000',secureCookies:false});
   const server = app.listen(0,'127.0.0.1'); await once(server,'listening');
   const base = `http://127.0.0.1:${(server.address() as {port:number}).port}/api`;
   const post = (path: string, actor: number, body: unknown) => fetch(base+path,{method:'POST',headers:{Origin:'http://localhost:3000',Cookie:cookies[actor],'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const login = async (id: string) => {
+    if (!remote) return `precisign_session=${createSession(local!, id)}`;
+    const response = await fetch(base + '/auth/login', { method: 'POST', headers: { Origin: 'http://localhost:3000', 'Content-Type': 'application/json' }, body: JSON.stringify({ email: fixtures.get(id), password }) });
+    assert.equal(response.status, 200);
+    return response.headers.get('set-cookie')!.split(';')[0];
+  };
   const signature = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVR4nGMQMgkTMgljgFAAEA4CcUNrdOsAAAAASUVORK5CYII=';
   const f = INITIAL_REQUESTS[0].formData;
   const formData = {dateOfRequest:f.dateOfRequest,department:'Test',priority:'Medium',workDescription:'Synthetic request',documents:f.documents};
   const input = {companyId:'PEW',formType:'Admin Work Request',formData,signatureDataUrl:signature};
   try {
+    for (const id of ids) cookies.push(await login(id));
     assert.equal((await post('/requests',0,{...input,status:'Approved'})).status,400);
     assert.equal((await post('/requests',0,{...input,signatureDataUrl:''})).status,400);
     const createdResponse = await post('/requests',0,input); assert.equal(createdResponse.status,201);
@@ -31,7 +66,7 @@ test('HTTP lifecycle enforces signatures, stages, revisions and correction histo
     assert.equal((await post(path+'/approve',0,{expectedRevision:1,signatureDataUrl:signature})).status,403);
     const concurrent = await Promise.all([post(path+'/approve',1,{expectedRevision:1,signatureDataUrl:signature}),post(path+'/approve',1,{expectedRevision:1,signatureDataUrl:signature})]);
     assert.deepEqual(concurrent.map(r=>r.status).sort(),[200,409]);
-    const committed = JSON.parse(String(db.prepare('SELECT record FROM requests WHERE id=?').get(record.id)!.record));
+    const committed = JSON.parse(String((await execute('SELECT record FROM requests WHERE id=?', record.id))[0].record));
     assert.equal(committed.approvalEvidence.length, 1);
     assert.equal(committed.approvalEvidence[0].requestRevision, 1);
     assert.equal(committed.approvalEvidence[0].signatureDataUrl, signature);
@@ -59,16 +94,16 @@ test('HTTP lifecycle enforces signatures, stages, revisions and correction histo
 
     const combinedType = 'Administrative & Payment Request';
     for (const role of ['IT', 'Finance', 'HR'] as const) {
-      const id = await provisionUser(db, { email: `processing-${role}@example.test`, name: `Assigned ${role}`, department: role, companyId: 'PEW', role }, 'Synthetic-password-123');
+      const id = await addUser({ email: `processing-${role}@example.test`, name: `Assigned ${role}`, department: role, companyId: 'PEW', role });
       ids.push(id);
-      cookies.push(`precisign_session=${createSession(db, id)}`);
+      cookies.push(await login(id));
     }
     const combinedWorkflow = { ...workflow, formType: combinedType, version: 1, processingUserIds: [ids[0], ids[4]],
       stages: workflow.stages.map(stage => stage.isFinalApproval ? { ...stage,
         backupSignerIds: [ids[3], ids[5]], backupCompletionUserIds: [ids[5]],
       } : stage),
     };
-    db.prepare('INSERT INTO workflows VALUES (?,?,?,?)').run('PEW', combinedType, 1, JSON.stringify(combinedWorkflow));
+    await putWorkflow(combinedType, combinedWorkflow);
     const optionalInput = { ...input, formType: combinedType, expectedWorkflowVersion: 1,
       formData: { ...formData, administrativePayment: { documentDescription: '' } }, signerChoices: { [combinedWorkflow.stages[1].id]: ids[2] } };
     const finalId = combinedWorkflow.stages[1].id;
@@ -179,7 +214,7 @@ test('HTTP lifecycle enforces signatures, stages, revisions and correction histo
       assert.equal((await completed.json()).processing.adminWork.byUserId, ids[0]);
     }
     const itWorkflow = { ...workflow, formType: 'IT Request', version: 1, processingUserIds: [ids[3]], stages: [{ ...workflow.stages[1], stageNumber: 1 }] };
-    db.prepare('INSERT INTO workflows VALUES (?,?,?,?)').run('PEW', 'IT Request', 1, JSON.stringify(itWorkflow));
+    await putWorkflow('IT Request', itWorkflow);
     const itRequest = { requestType: 'Network access', justification: 'Project handover' };
     const itInput = { ...input, formType: 'IT Request', expectedWorkflowVersion: 1, signerChoices: { [finalId]: ids[2] }, formData: { ...formData, itRequest } };
     assert.equal((await post('/requests', 0, { ...itInput, formData: { ...itInput.formData, itRequest: { ...itRequest, remarks: 'Forged' } } })).status, 400);
@@ -211,7 +246,7 @@ test('HTTP lifecycle enforces signatures, stages, revisions and correction histo
     ];
     for (const { type, data } of financialForms) {
       const config = { ...itWorkflow, formType: type, processingUserIds: [ids[0], ids[4]] };
-      db.prepare('INSERT INTO workflows VALUES (?,?,?,?)').run('PEW', type, 1, JSON.stringify(config));
+      await putWorkflow(type, config);
       const response = await post('/requests', 0, { ...input, formType: type, expectedWorkflowVersion: 1, signerChoices: { [finalId]: ids[2] }, formData: { ...formData, ...data } });
       assert.equal(response.status, 201);
       const financial = await response.json();
@@ -243,8 +278,7 @@ test('HTTP lifecycle enforces signatures, stages, revisions and correction histo
         const acknowledgedVoucher = await acknowledged.json();
         assert.equal(acknowledgedVoucher.processing.cashReceipt.signatureDataUrl, signature);
         assert.deepEqual(acknowledgedVoucher.formData, approved.formData);
-        db.prepare('UPDATE workflows SET config=? WHERE company_id=? AND form_type=?')
-          .run(JSON.stringify({ ...config, allowCashReceiptWaiver: true }), 'PEW', type);
+        await execute('UPDATE workflows SET config=? WHERE company_id=? AND form_type=?', JSON.stringify({ ...config, allowCashReceiptWaiver: true }), 'PEW', type);
         const exception = await (await post('/requests', 0, { ...input, formType: type, expectedWorkflowVersion: 1, signerChoices: { [finalId]: ids[2] }, formData: { ...formData, ...data } })).json();
         const exceptionPath = `/requests/${exception.id}`;
         assert.equal((await post(exceptionPath + '/approve', 2, { expectedRevision: 1, signatureDataUrl: signature })).status, 200);
@@ -279,5 +313,14 @@ test('HTTP lifecycle enforces signatures, stages, revisions and correction histo
     assert.equal((await post(linkedPath + '/return', 2, { expectedRevision: 1, reason: 'More detail' })).status, 200);
     assert.equal((await post(linkedPath + '/resubmit', 0, { expectedRevision: 2, formData, signatureDataUrl: signature, attachments: [] })).status, 400);
     assert.equal((await post(linkedPath + '/resubmit', 0, { expectedRevision: 2, formData, signatureDataUrl: signature, attachments: [receipt] })).status, 200);
-  } finally {server.closeAllConnections(); await new Promise<void>(resolve=>server.close(()=>resolve()));db.close();}
+  } finally {server.closeAllConnections(); await new Promise<void>(resolve=>server.close(()=>resolve()));try {
+      if (remote) await remote.transaction(async tx => {
+        for (const id of fixtures.keys()) {
+          await tx.execute('DELETE FROM requests WHERE requester_id=?', [id]);
+          await tx.execute('DELETE FROM users WHERE id=?', [id]);
+        }
+        for (const type of workflowTypes) await tx.execute('DELETE FROM workflows WHERE company_id=? AND form_type=?', ['PEW', type]);
+      });
+    } finally { db.close(); }
+  }
 });

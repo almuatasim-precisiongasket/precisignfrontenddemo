@@ -4,6 +4,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { CompanyId, UserProfile, UserRole } from '../src/types/index';
 import { transaction } from './db';
 import { bytes, fields, RequestError, text } from './requestValidation';
+import type { AsyncDatabase, AsyncQueryConnection } from './asyncDatabase';
 
 const scrypt = promisify(derive);
 const roles: UserRole[] = ['Admin', 'General Manager', 'Director', 'IT', 'Finance', 'HR', 'Purchase'];
@@ -47,7 +48,7 @@ export function safeProfile(row: Record<string, unknown>): UserProfile {
     initials: name.trim().split(/\s+/).map(part => part[0]).slice(0, 2).join('').toUpperCase(), avatarColor: '#365C78' };
 }
 
-export async function registerAccount(db: DatabaseSync, input: unknown) {
+export async function registerAccount(db: DatabaseSync | AsyncDatabase, input: unknown) {
   fields(input, ['name', 'email', 'department', 'password', 'signatureDataUrl']);
   const body = input as Record<string, unknown>;
   const name = text(body.name, 150).trim();
@@ -61,7 +62,7 @@ export async function registerAccount(db: DatabaseSync, input: unknown) {
   if (signature !== undefined) await bytes(signature, true);
   const hash = await hashPassword(password);
   const id = randomUUID();
-  transaction(db, () => {
+  if ('prepare' in db) transaction(db, () => {
     // The legacy company column is required by older records. Explicit grants control access.
     const result = db.prepare(`INSERT INTO users (id,email,name,role,department,company_id,password_hash)
       VALUES (?, ?, ?, 'Admin', ?, 'PEW', ?) ON CONFLICT(email) DO NOTHING`).run(id, email, name, department, hash);
@@ -70,6 +71,13 @@ export async function registerAccount(db: DatabaseSync, input: unknown) {
     if (typeof signature === 'string') {
       db.prepare('INSERT INTO user_signatures VALUES (?, ?, ?)').run(id, signature, name);
     }
+  });
+  else await db.transaction(async tx => {
+    const result = await tx.execute(`INSERT INTO users (id,email,name,role,department,company_id,password_hash)
+      VALUES (?, ?, ?, 'Admin', ?, 'PEW', ?) ON CONFLICT(email) DO NOTHING`, [id, email, name, department, hash]);
+    if (result.rowsAffected === 0) throw new RequestError(409, 'Account could not be created.');
+    await tx.execute("INSERT INTO account_access (user_id,role_override) VALUES (?,'Employee')", [id]);
+    if (typeof signature === 'string') await tx.execute('INSERT INTO user_signatures VALUES (?, ?, ?)', [id, signature, name]);
   });
 }
 export function createSession(db: DatabaseSync, userId: string, now = Date.now()) {
@@ -102,10 +110,37 @@ export async function signIn(db: DatabaseSync, email: string, password: string, 
 export function revokeSession(db: DatabaseSync, token: string) {
   db.prepare('DELETE FROM sessions WHERE token_hash=?').run(tokenHash(token));
 }
+const sessionUserSql = 'SELECT profile.*, EXISTS(SELECT 1 FROM route_administrators WHERE user_id=profile.id) AS route_admin FROM sessions JOIN account_profiles profile ON profile.id=sessions.user_id WHERE token_hash=? AND expires_at>? AND COALESCE(profile.is_disabled,0)=0';
+
 export function sessionUser(db: DatabaseSync, token: string | undefined, now = Date.now()) {
   if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
-  const row = db.prepare('SELECT profile.*, EXISTS(SELECT 1 FROM route_administrators WHERE user_id=profile.id) AS route_admin FROM sessions JOIN account_profiles profile ON profile.id=sessions.user_id WHERE token_hash=? AND expires_at>? AND COALESCE(profile.is_disabled,0)=0').get(tokenHash(token), now);
+  const row = db.prepare(sessionUserSql).get(tokenHash(token), now);
   return row ? safeProfile(row) : null;
+}
+
+export async function sessionUserAsync(db: AsyncQueryConnection, token: string | undefined, now = Date.now()) {
+  if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
+  const result = await db.execute(sessionUserSql, [tokenHash(token), now]);
+  return result.rows[0] ? safeProfile(result.rows[0]) : null;
+}
+
+export async function signInAsync(db: AsyncDatabase, email: string, password: string, dummyHash: string, previousToken: string | undefined, now: () => number) {
+  const credentials = (await db.execute('SELECT id, password_hash FROM users WHERE email=?', [normalizeEmail(email)])).rows[0];
+  const valid = await verifyPassword(password, credentials ? String(credentials.password_hash) : dummyHash);
+  if (!credentials || !valid) return null;
+  return db.transaction(async tx => {
+    const current = (await tx.execute('SELECT id FROM account_profiles WHERE id=? AND email=? AND password_hash=? AND COALESCE(is_disabled,0)=0',
+      [String(credentials.id), normalizeEmail(email), String(credentials.password_hash)])).rows[0];
+    if (!current) return null;
+    const issuedAt = now();
+    if (previousToken) await tx.execute('DELETE FROM sessions WHERE token_hash=?', [tokenHash(previousToken)]);
+    await tx.execute('DELETE FROM sessions WHERE expires_at <= ?', [issuedAt]);
+    const token = randomBytes(32).toString('hex');
+    await tx.execute('INSERT INTO sessions VALUES (?,?,?)', [tokenHash(token), String(current.id), issuedAt + sessionLifetime]);
+    const user = await sessionUserAsync(tx, token, issuedAt);
+    if (!user) throw new Error('New session could not be loaded.');
+    return { token, user };
+  });
 }
 
 export async function changePassword(db: DatabaseSync, userId: string, currentPassword: string, newPassword: string, requireCurrentUser: () => UserProfile) {
@@ -120,6 +155,22 @@ export async function changePassword(db: DatabaseSync, userId: string, currentPa
     db.prepare('UPDATE account_access SET must_change_password=0 WHERE user_id=?').run(userId);
     db.prepare('DELETE FROM sessions WHERE user_id=?').run(userId);
     db.prepare('DELETE FROM password_resets WHERE user_id=?').run(userId);
+  });
+}
+
+export async function changePasswordAsync(db: AsyncDatabase, userId: string, currentPassword: string, newPassword: string, requireCurrentUser: (tx: AsyncQueryConnection) => Promise<UserProfile>) {
+  const row = (await db.execute('SELECT password_hash FROM users WHERE id=?', [userId])).rows[0];
+  if (!row || !(await verifyPassword(currentPassword, String(row.password_hash)))) throw new RequestError(403, 'Invalid credentials.');
+  if (newPassword.length < 12 || newPassword.length > 1024) throw new RequestError(400, 'Invalid password.');
+  const hash = await hashPassword(newPassword);
+  await db.transaction(async tx => {
+    const user = await requireCurrentUser(tx);
+    if (user.id !== userId) throw new RequestError(403, 'Invalid credentials.');
+    const result = await tx.execute('UPDATE users SET password_hash=? WHERE id=? AND password_hash=?', [hash, userId, String(row.password_hash)]);
+    if (result.rowsAffected !== 1) throw new RequestError(409, 'Credentials changed.');
+    await tx.execute('UPDATE account_access SET must_change_password=0 WHERE user_id=?', [userId]);
+    await tx.execute('DELETE FROM sessions WHERE user_id=?', [userId]);
+    await tx.execute('DELETE FROM password_resets WHERE user_id=?', [userId]);
   });
 }
 
@@ -139,5 +190,25 @@ export async function resetPassword(db: DatabaseSync, token: string, password: s
     db.prepare('UPDATE users SET password_hash=? WHERE id=?').run(passwordHash, row.user_id!);
     db.prepare('UPDATE account_access SET must_change_password=0 WHERE user_id=?').run(row.user_id!);
     db.prepare('DELETE FROM sessions WHERE user_id=?').run(row.user_id!);
+  });
+}
+
+export async function resetPasswordAsync(db: AsyncDatabase, token: string, password: string, now: () => number) {
+  const invalid = () => new RequestError(400, 'Reset link is invalid or expired.');
+  if (!/^[a-f0-9]{64}$/.test(token)) throw invalid();
+  if (password.length < 12 || password.length > 1024) throw new RequestError(400, 'Invalid password.');
+  const hash = tokenHash(token);
+  const sql = `SELECT r.user_id FROM password_resets r JOIN account_profiles p ON p.id=r.user_id
+    WHERE r.token_hash=? AND r.expires_at>? AND COALESCE(p.is_disabled,0)=0`;
+  if (!(await db.execute(sql, [hash, now()])).rows[0]) throw invalid();
+  const passwordHash = await hashPassword(password);
+  await db.transaction(async tx => {
+    const row = (await tx.execute(sql, [hash, now()])).rows[0];
+    if (!row) throw invalid();
+    const userId = String(row.user_id);
+    await tx.execute('DELETE FROM password_resets WHERE token_hash=?', [hash]);
+    await tx.execute('UPDATE users SET password_hash=? WHERE id=?', [passwordHash, userId]);
+    await tx.execute('UPDATE account_access SET must_change_password=0 WHERE user_id=?', [userId]);
+    await tx.execute('DELETE FROM sessions WHERE user_id=?', [userId]);
   });
 }

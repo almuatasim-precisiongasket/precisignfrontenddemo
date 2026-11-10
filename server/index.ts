@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { openDatabase } from './db';
+import { migrateAsyncDatabase, openAsyncDatabase } from './asyncDatabase';
 import { createApp } from './app';
 import express from 'express';
 import { existsSync } from 'node:fs';
@@ -11,9 +12,20 @@ const port = Number(process.env.API_PORT || 3001);
 if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid API_PORT.');
 const origin = process.env.APP_ORIGIN || 'http://127.0.0.1:3000';
 if (production && !origin.startsWith('https://')) throw new Error('Set APP_ORIGIN to the HTTPS application origin.');
-const path = resolve(process.env.DATABASE_PATH || 'data/precisign.sqlite');
-mkdirSync(dirname(path), { recursive: true });
-const db = openDatabase(path);
+const databaseMode = process.env.PRECISIGN_DATABASE || 'sqlite';
+if (!['sqlite', 'turso'].includes(databaseMode)) throw new Error('Invalid PRECISIGN_DATABASE.');
+let db;
+if (databaseMode === 'turso') {
+  const url = process.env.TURSO_DATABASE_URL;
+  const authToken = process.env.TURSO_AUTH_TOKEN;
+  if (!url || !authToken || !url.startsWith('libsql://')) throw new Error('Turso requires TURSO_DATABASE_URL and TURSO_AUTH_TOKEN.');
+  db = openAsyncDatabase(url, authToken);
+  try { await migrateAsyncDatabase(db); } catch (error) { db.close(); throw error; }
+} else {
+  const path = resolve(process.env.DATABASE_PATH || 'data/precisign.sqlite');
+  mkdirSync(dirname(path), { recursive: true });
+  db = openDatabase(path);
+}
 const app = await createApp(db, { origin, secureCookies: production });
 if (production) {
   if (process.env.VITE_DATA_MODE !== 'api') throw new Error('Production requires VITE_DATA_MODE=api at build and start.');

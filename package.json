@@ -16,6 +16,7 @@
     "backup": "tsx server/backup.ts",
     "restore": "tsx server/backup.ts restore",
     "test:startup": "tsx --test server/startup.test.ts",
+    "test:server:turso": "node --import ./server/requireTursoTestEnv.mjs --import tsx --test --test-concurrency=1 server/accountAdmin.test.ts server/reads.test.ts server/requests.test.ts",
     "test:backup": "tsx --test server/backup.test.ts",
     "dev:server": "tsx server/index.ts",
     "provision:user": "tsx server/provision-user.ts",
@@ -34,6 +35,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
+    "@libsql/client": "^0.18.0",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
     "dotenv": "^17.2.3",

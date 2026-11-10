@@ -9,7 +9,9 @@ import { draftRoutes } from './drafts';
 import { isDatabaseBusy } from './db';
 import { ownSignature, profileRoutes } from './profile';
 import { fields, RequestError, text } from './requestValidation';
-import { changePassword, hashPassword, registerAccount, resetPassword, revokeSession, sessionUser, signIn, sessionLifetime } from './auth';
+import { changePassword, changePasswordAsync, hashPassword, registerAccount, resetPassword, resetPasswordAsync, revokeSession, sessionUser, sessionUserAsync, signIn, signInAsync, sessionLifetime, tokenHash } from './auth';
+import type { AsyncDatabase, AsyncQueryConnection } from './asyncDatabase';
+import { ownSignatureAsync } from './profile';
 
 export interface ServerConfig { origin: string; secureCookies: boolean; now?: () => number; loginLimit?: number; }
 
@@ -23,7 +25,7 @@ const requestErrorMessages: Partial<Record<number, string>> = {
   415: 'Unsupported request encoding.',
 };
 
-export async function createApp(db: DatabaseSync, config: ServerConfig) {
+export async function createApp(db: DatabaseSync | AsyncDatabase, config: ServerConfig) {
   const origin = new URL(config.origin).origin;
   if (config.secureCookies && !origin.startsWith('https://')) throw new Error('Secure mode requires an HTTPS origin.');
   const app = express();
@@ -80,7 +82,7 @@ export async function createApp(db: DatabaseSync, config: ServerConfig) {
     try {
       const { email, password } = req.body ?? {};
       if (typeof email !== 'string' || email.length > 254 || typeof password !== 'string' || password.length > 1024) { res.status(401).json({ error: 'Invalid email or password.' }); return; }
-      const session = await signIn(db, email, password, dummyHash, token(req.get('Cookie')), now);
+      const session = await ('prepare' in db ? signIn(db, email, password, dummyHash, token(req.get('Cookie')), now) : signInAsync(db, email, password, dummyHash, token(req.get('Cookie')), now));
       if (!session) { res.status(401).json({ error: 'Invalid email or password.' }); return; }
       res.setHeader('Set-Cookie', cookie(session.token, sessionLifetime / 1000));
       res.json({ user: session.user });
@@ -89,14 +91,16 @@ export async function createApp(db: DatabaseSync, config: ServerConfig) {
   app.post('/api/auth/reset-password', limitAuthAttempts(false), express.json({ limit: '16kb' }), async (req, res, next) => {
     try {
       fields(req.body, ['token', 'newPassword']);
-      await resetPassword(db, text(req.body.token, 64, false), text(req.body.newPassword, 1024, false), now);
+      if ('prepare' in db) await resetPassword(db, text(req.body.token, 64, false), text(req.body.newPassword, 1024, false), now);
+      else await resetPasswordAsync(db, text(req.body.token, 64, false), text(req.body.newPassword, 1024, false), now);
       res.setHeader('Set-Cookie', cookie('', 0));
       res.status(204).end();
     } catch (error) { next(error); }
   });
-  app.use('/api', (req, res, next) => {
+  app.use('/api', async (req, res, next) => {
+    try {
     const sessionToken = token(req.get('Cookie'));
-    const user = sessionUser(db, sessionToken, now());
+    const user = 'prepare' in db ? sessionUser(db, sessionToken, now()) : await sessionUserAsync(db, sessionToken, now());
     if (!user) { res.status(401).json({ error: 'Authentication required.' }); return; }
     // A shared browser cookie may switch accounts in another tab. Never apply old editor data to that account.
     if (req.get('X-PreciSign-User') && req.get('X-PreciSign-User') !== user.id) { res.status(401).json({ error: 'Session identity changed.' }); return; }
@@ -104,37 +108,46 @@ export async function createApp(db: DatabaseSync, config: ServerConfig) {
       res.status(403).json({ error: 'Change your password to continue.' }); return;
     }
     res.locals.user = user;
-    res.locals.requireCurrentUser = () => {
+    if ('prepare' in db) res.locals.requireCurrentUser = () => {
       const current = sessionUser(db, sessionToken, now());
       if (!current || current.id !== user.id) throw new RequestError(401, 'Authentication required.');
       return current;
     };
+    else res.locals.requireCurrentUserAsync = async (tx: AsyncQueryConnection) => {
+      const current = await sessionUserAsync(tx, sessionToken, now());
+      if (!current || current.id !== user.id) throw new RequestError(401, 'Authentication required.');
+      return current;
+    };
     next();
+    } catch (error) { next(error); }
   });
   // Only authenticated routes need the larger limit for signatures and attachments.
   app.use('/api', express.json({ limit: '18mb' }));
-  app.get('/api/auth/me', (_req, res) => { res.json({ user: { ...res.locals.user, ...ownSignature(db, res.locals.user.id) } }); });
+  app.get('/api/auth/me', async (_req, res, next) => { try { const signature = 'prepare' in db ? ownSignature(db, res.locals.user.id) : await ownSignatureAsync(db, res.locals.user.id); res.json({ user: { ...res.locals.user, ...signature } }); } catch (error) { next(error); } });
   app.post('/api/auth/change-password', async (req, res, next) => {
     try {
       fields(req.body, ['currentPassword', 'newPassword']);
       const currentPassword = text(req.body.currentPassword, 1024, false);
       const newPassword = text(req.body.newPassword, 1024, false);
-      await changePassword(db, res.locals.user.id, currentPassword, newPassword, res.locals.requireCurrentUser);
+      if ('prepare' in db) await changePassword(db, res.locals.user.id, currentPassword, newPassword, res.locals.requireCurrentUser);
+      else await changePasswordAsync(db, res.locals.user.id, currentPassword, newPassword, res.locals.requireCurrentUserAsync);
       res.setHeader('Set-Cookie', cookie('', 0));
       res.status(204).end();
     } catch (error) { next(error); }
   });
-  app.post('/api/auth/logout', (req, res) => {
-    revokeSession(db, token(req.get('Cookie'))!);
+  app.post('/api/auth/logout', async (req, res, next) => {
+    try { if ('prepare' in db) revokeSession(db, token(req.get('Cookie'))!);
+    else await db.execute('DELETE FROM sessions WHERE token_hash=?', [tokenHash(token(req.get('Cookie'))!)]);
     res.setHeader('Set-Cookie', cookie('', 0)); res.status(204).end();
+    } catch (error) { next(error); }
   });
   app.use('/api', readRoutes(db, origin, req => token(req.get('Cookie'))));
-  app.use('/api', requestRoutes(db));
-  app.use('/api', draftRoutes(db));
   app.use('/api', profileRoutes(db));
-  app.use('/api', companyBrandingRoutes(db));
   app.use('/api', accountAdminRoutes(db, origin, now));
   app.use('/api', workflowRoutes(db));
+  app.use('/api', draftRoutes(db));
+  app.use('/api', companyBrandingRoutes(db));
+  app.use('/api', requestRoutes(db));
   app.use((_req, res) => { res.status(404).json({ error: 'Not found.' }); });
   app.use((error: { status?: number }, _req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (res.headersSent) { next(error); return; }
