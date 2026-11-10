@@ -205,10 +205,35 @@ export interface ProcessingMilestone {
   note: string;
 }
 
+/** Server-captured evidence; application operations must preserve prior entries. */
+export interface ApprovalEvidence {
+  id: string; requestId: string; documentVersion: number; requestRevision: number;
+  stepId: string; stepNumber: number; decision: 'approved';
+  actorId: string; actorName: string; actorRole: string; recordedAt: string;
+  signatureDataUrl: string; documentStateId: string;
+}
+export interface SignedDocumentState {
+  id: string; documentVersion: number; requestRevision: number;
+  formData: AdminWorkFormData; attachmentSetId: string; approvalSteps: ApprovalStepState[];
+}
+export interface VersionAttachmentSet {
+  id: string; documentVersion: number; attachments: AttachmentItem[];
+}
+export interface FrozenVersionPresentation {
+  documentVersion: number; frozenAtRevision: number; frozenAt: string;
+  disposition: 'returned' | 'rejected' | 'completed' | 'superseded';
+  formData: AdminWorkFormData; attachmentSetId: string;
+  approvalSteps: ApprovalStepState[]; processing?: RequestRecord['processing'];
+}
+
 export interface RequestRecord {
   rndEvaluationHistory?: { version: number; at: string; actorId: string; actorName: string; evaluation: RndFormData }[];
   /** R&D-only approval-time states; later evaluation never changes these entries. */
   rndSignedStates?: { version: number; stageId: string; actorId: string; at: string; signatureDataUrl?: string; formData: AdminWorkFormData }[];
+  approvalEvidence?: ApprovalEvidence[];
+  signedDocumentStates?: SignedDocumentState[];
+  versionAttachmentSets?: VersionAttachmentSet[];
+  frozenVersionPresentations?: FrozenVersionPresentation[];
   financeHoldHistory?: (ProcessingMilestone & {
     action: 'hold' | 'evidence' | 'resume' | 'correction';
     documentVersion: number;

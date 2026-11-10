@@ -8,7 +8,7 @@ import { canUserAccessCompany } from '../../utils/companyAccess';
 import { needsProcessingAction } from '../../utils/routeProcessing';
 import { useApp, useUnsavedWork } from '../../context/AppContext';
 import { AdminWorkFormData, AttachmentItem } from '../../types/index';
-import { RequestDocument } from '../document/RequestDocument';
+import { getRequestDocumentVersion, RequestDocument } from '../document/RequestDocument';
 import { RouteProcessingPanel } from './RouteProcessingPanel';
 import { FinanceHoldPanel } from './FinanceHoldPanel';
 import { FinancialCorrectionFields } from './FinancialCorrectionFields';
@@ -126,14 +126,9 @@ export const ReviewSignView: React.FC = () => {
     );
   }
 
-  // Active form data according to selected version
-  const activeFormData =
-    selectedVersion === request.documentVersion
-      ? request.formData
-      : request.versionSnapshots.find((v) => v.version === selectedVersion)?.formData || request.formData;
-  const visibleAttachments = selectedVersion === request.documentVersion
-    ? request.attachments
-    : request.attachmentVersions?.find(snapshot => snapshot.version === selectedVersion)?.attachments;
+  const selectedDocument = getRequestDocumentVersion(request, selectedVersion);
+  const activeFormData = selectedDocument?.data ?? request.formData;
+  const visibleAttachments = selectedDocument?.attachments;
   const submission = request.approvalHistory.find(event => event.action === 'Submitted' && event.version === selectedVersion);
   const submissionNote = submission?.comments?.replace(/^Resubmitted: /, '').trim();
   const showSubmissionNote = submissionNote && !/^(Request submitted\.|Official request submitted\.|Request submitted with \d+ attachment\(s\)\.|Resubmitted Version \d+)$/.test(submissionNote);
@@ -507,6 +502,7 @@ export const ReviewSignView: React.FC = () => {
               ))}
             </div>
 
+            {selectedVersion !== request.documentVersion && <span role="status" className="text-xs text-workspace-muted">{selectedDocument?.historicalStatus ?? 'Historical status unavailable'}</span>}
             {/* Display tools */}
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1 border border-[#E2E5E9] rounded px-1.5 py-0.5 bg-slate-50">
@@ -575,12 +571,12 @@ export const ReviewSignView: React.FC = () => {
               }}
               className="document-preview-page w-full flex items-start justify-center"
             >
-              <RequestDocument
+              {selectedDocument ? <RequestDocument
                 formType={request.formType}
                 data={activeFormData}
                 attachments={visibleAttachments}
-                processing={selectedVersion === request.documentVersion ? request.processing : undefined}
-              />
+                processing={selectedDocument.processing}
+              /> : <p role="status">This document version is unavailable.</p>}
             </div>
           </div>
         </div>

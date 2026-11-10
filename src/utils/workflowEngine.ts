@@ -1,4 +1,5 @@
 import { rndEvaluationComplete, isEvaluationField } from './rndWorkflow';
+import { captureApproval, freezeVersion } from './historicalEvidence';
 import {
   RequestRecord,
   WorkflowConfig,
@@ -248,7 +249,8 @@ export function approveRequestStage(params: {
     }] } : {}),
   };
 
-  return { success: true, updatedRequest };
+  const evidenced = captureApproval(request, updatedRequest, actingUser, currentStep, signatureDataUrl || actingUser.signatureDataUrl || '', now);
+  return { success: true, updatedRequest: isFinalStage ? freezeVersion(evidenced, 'completed') : evidenced };
 }
 
 export function returnRequestForCorrection(params: {
@@ -300,7 +302,7 @@ export function returnRequestForCorrection(params: {
     approvalHistory: [...request.approvalHistory, newHistoryItem],
   };
 
-  return { success: true, updatedRequest };
+  return { success: true, updatedRequest: freezeVersion(updatedRequest, 'returned') };
 }
 
 export function resubmitCorrectedRequest(params: {
@@ -324,6 +326,7 @@ export function resubmitCorrectedRequest(params: {
     return { success: false, error: 'The requester and company cannot be changed during correction.' };
   }
 
+  const outgoing = freezeVersion(request, 'returned');
   const now = new Date().toISOString();
   const nextVersion = request.documentVersion + 1;
 
@@ -374,7 +377,7 @@ export function resubmitCorrectedRequest(params: {
   const firstStep = resetSteps[0];
 
   const updatedRequest: RequestRecord = {
-    ...request,
+    ...outgoing,
     documentVersion: nextVersion,
     updatedAt: now,
     status: 'Pending Approval',
@@ -386,7 +389,7 @@ export function resubmitCorrectedRequest(params: {
     formData: enrichedFormData,
     attachments: attachments ?? request.attachments,
     versionSnapshots: [
-      ...request.versionSnapshots.map(snapshot => request.formType === 'R&D Initiative' && snapshot.version === request.documentVersion ? { ...snapshot, formData: structuredClone(request.formData) } : snapshot),
+      ...outgoing.versionSnapshots,
       {
         version: nextVersion,
         updatedAt: now,
@@ -465,7 +468,7 @@ export function rejectRequest(params: {
     approvalHistory: [...request.approvalHistory, newHistoryItem],
   };
 
-  return { success: true, updatedRequest };
+  return { success: true, updatedRequest: freezeVersion(updatedRequest, 'rejected') };
 }
 
 /** Explicit final-user authority; legacy Director Override history remains unchanged. */
@@ -501,7 +504,7 @@ export function completePreciRoute(params: { request: RequestRecord; actingUser:
   const updatedRequest: RequestRecord = { ...signed.updatedRequest, status: 'Approved', updatedAt: now, currentApproverId: undefined, currentApproverName: undefined,
     approvalSteps: signed.updatedRequest.approvalSteps.map(step => step.status === 'Approved' || step.status === 'Bypassed' ? step : { ...step, status: 'Bypassed', actionDate: now, comments: `Bypassed by final approver: ${reason.trim()}`, signatureDataUrl: undefined }),
     approvalHistory: [...signed.updatedRequest.approvalHistory, { id: crypto.randomUUID(), stepNumber: request.approvalSteps.length, actionByUserId: actingUser.id, actionByName: actingUser.name, actionByRole: actingUser.role, action: 'Route Completed', dateTime: now, version: request.documentVersion, comments: `${reason.trim()}. Bypassed: ${bypassed.map(step => step.assignedUserName).join(', ') || 'None'}` }] };
-  return { success: true, updatedRequest };
+  return { success: true, updatedRequest: freezeVersion(updatedRequest, 'completed') };
 }
 
 export function directorOverrideApprove(params: {

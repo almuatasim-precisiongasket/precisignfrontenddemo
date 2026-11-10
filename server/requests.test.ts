@@ -31,6 +31,11 @@ test('HTTP lifecycle enforces signatures, stages, revisions and correction histo
     assert.equal((await post(path+'/approve',0,{expectedRevision:1,signatureDataUrl:signature})).status,403);
     const concurrent = await Promise.all([post(path+'/approve',1,{expectedRevision:1,signatureDataUrl:signature}),post(path+'/approve',1,{expectedRevision:1,signatureDataUrl:signature})]);
     assert.deepEqual(concurrent.map(r=>r.status).sort(),[200,409]);
+    const committed = JSON.parse(String(db.prepare('SELECT record FROM requests WHERE id=?').get(record.id)!.record));
+    assert.equal(committed.approvalEvidence.length, 1);
+    assert.equal(committed.approvalEvidence[0].requestRevision, 1);
+    assert.equal(committed.approvalEvidence[0].signatureDataUrl, signature);
+    assert.equal(committed.approvalEvidence[0].actorId, ids[1]);
     record = await (await post(path+'/return',2,{expectedRevision:2,reason:'Correct detail'})).json();
     assert.equal(record.status,'Returned for Correction');
     assert.equal((await post(path+'/resubmit',1,{expectedRevision:3,formData,signatureDataUrl:signature})).status,403);
@@ -39,6 +44,9 @@ test('HTTP lifecycle enforces signatures, stages, revisions and correction histo
     assert.equal(record.versionSnapshots.at(-1).changeNote, 'Version 2 corrections');
     assert.equal(record.documentVersion,2); assert.equal(record.currentStageIndex,0); assert.equal(record.attachmentVersions[0].version,1);
     assert.equal(record.versionSnapshots[0].formData.workDescription,'Synthetic request');
+    assert.equal(record.approvalEvidence.length, 1);
+    assert.equal(record.approvalEvidence[0].documentVersion, 1);
+    assert.equal(record.frozenVersionPresentations[0].approvalSteps[0].signatureDataUrl, signature);
     record = await (await post(path+'/approve',1,{expectedRevision:4,signatureDataUrl:signature})).json();
     record = await (await post(path+'/approve',2,{expectedRevision:5,signatureDataUrl:signature})).json();
     assert.equal(record.status,'Approved'); assert.equal(record.revision,6);

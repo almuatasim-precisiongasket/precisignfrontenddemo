@@ -11,17 +11,20 @@ interface RequestDocumentProps {
   attachments?: AttachmentItem[];
   processing?: RequestRecord['processing'];
   print?: boolean;
+  historicalStatus?: string;
 }
 
 export function getRequestDocumentVersion(request: RequestRecord, version: number): RequestDocumentProps | undefined {
   const current = version === request.documentVersion;
-  const data = current ? request.formData : request.versionSnapshots?.find(snapshot => snapshot.version === version)?.formData;
+  const frozen = current ? undefined : [...(request.frozenVersionPresentations ?? [])].reverse().find(item => item.documentVersion === version);
+  const data = current ? request.formData : frozen?.formData ?? request.versionSnapshots?.find(snapshot => snapshot.version === version)?.formData;
   if (!data) return undefined;
   return {
+    historicalStatus: current ? request.status : frozen ? ({returned:'Returned for correction', rejected:'Rejected', completed:'Signing completed', superseded:'Superseded'}[frozen.disposition]) : 'Historical status unavailable',
     formType: request.formType,
     data,
-    attachments: current ? request.attachments : request.attachmentVersions?.find(snapshot => snapshot.version === version)?.attachments,
-    processing: current ? request.processing : undefined,
+    attachments: current ? request.attachments : (frozen && request.versionAttachmentSets?.find(set => set.id === frozen.attachmentSetId)?.attachments) ?? request.attachmentVersions?.find(snapshot => snapshot.version === version)?.attachments,
+    processing: current ? request.processing : frozen?.processing,
   };
 }
 

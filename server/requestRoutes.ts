@@ -133,7 +133,8 @@ export function requestRoutes(db: DatabaseSync) {
         const record = { ...result.updatedRequest, revision: Number(row.revision) + 1,
           attachmentVersions: action === 'resubmit' ? [...(request.attachmentVersions || []), { version: request.documentVersion, attachments: request.attachments }] : request.attachmentVersions };
         if (record.pendingReplacement && (record.status !== 'Pending Approval' || ['Approved','Bypassed','Rejected'].includes(record.approvalSteps.find(step => step.stageId === record.pendingReplacement!.stageId)?.status || ''))) record.pendingReplacement = undefined;
-        db.prepare('UPDATE requests SET status=?,revision=?,record=? WHERE id=? AND revision=?').run(record.status, record.revision, JSON.stringify(record), request.id, body.expectedRevision);
+        const saved = db.prepare('UPDATE requests SET status=?,revision=?,record=? WHERE id=? AND revision=?').run(record.status, record.revision, JSON.stringify(record), request.id, body.expectedRevision);
+        if (saved.changes !== 1) throw new RequestError(409, 'Request changed. Refresh and review again.');
         return record;
       });
       res.json(updated);

@@ -1,3 +1,4 @@
+import { freezeVersion } from './historicalEvidence';
 import type { AttachmentItem, RequestRecord, UserProfile } from '../types';
 import { canUserAccessCompany } from './companyAccess';
 
@@ -87,7 +88,7 @@ export function recordProcessing(request: RequestRecord, actor: UserProfile, act
     const total = history.reduce((size, entry) => size + (entry.attachment?.sizeBytes ?? 0), attachment?.sizeBytes ?? 0);
     if (total > 10 * 1024 * 1024) return { success: false, error: 'Follow-up evidence exceeds 10 MiB.' };
     return { success: true, updatedRequest: {
-      ...request, updatedAt: at,
+      ...(action === 'correction' ? freezeVersion({ ...request, updatedAt: at }, 'returned') : request), updatedAt: at,
       ...(action === 'correction' && {
         status: 'Returned for Correction' as const,
         currentApproverId: undefined,
