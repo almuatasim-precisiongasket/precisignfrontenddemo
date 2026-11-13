@@ -17,11 +17,11 @@ export function accountAdminRoutes(db: DatabaseSync | AsyncDatabase, origin: str
   });
   router.get('/admin/accounts', async (_req, res, next) => {
     try {
-    const sql = `SELECT id,name,email,department,COALESCE(role_override,role) AS effective_role,company_grants,form_grants,is_super_admin,is_disabled
+    const sql = `SELECT id,name,email,notification_email,department,COALESCE(role_override,role) AS effective_role,company_grants,form_grants,is_super_admin,is_disabled
       FROM account_profiles ORDER BY name COLLATE NOCASE, id`;
     const accounts = 'prepare' in db ? db.prepare(sql).all() : (await db.execute(sql)).rows;
     res.json(accounts.map(row => ({
-      id: row.id, name: row.name, email: row.email, department: row.department, role: row.effective_role,
+      id: row.id, name: row.name, email: row.email, notificationEmail: row.notification_email ? String(row.notification_email) : undefined, department: row.department, role: row.effective_role,
       companyGrants: typeof row.company_grants === 'string' ? JSON.parse(row.company_grants) : null,
       formGrants: typeof row.form_grants === 'string' ? JSON.parse(row.form_grants) : null,
       isSuperAdmin: row.is_super_admin === 1,
@@ -31,13 +31,15 @@ export function accountAdminRoutes(db: DatabaseSync | AsyncDatabase, origin: str
   });
   router.patch('/admin/accounts/:id', async (req, res, next) => {
     try {
-      fields(req.body, ['email', 'isDisabled', 'role']);
-      const { email, isDisabled, role } = req.body;
+      fields(req.body, ['email', 'isDisabled', 'role', 'notificationEmail']);
+      const { email, isDisabled, role, notificationEmail } = req.body;
       if (role !== undefined && !['Employee', 'Admin', 'IT', 'Finance'].includes(role)) throw new RequestError(400, 'Invalid staff role.');
-      if (email === undefined && isDisabled === undefined && role === undefined) throw new RequestError(400, 'No change requested.');
+      if (email === undefined && isDisabled === undefined && role === undefined && notificationEmail === undefined) throw new RequestError(400, 'No change requested.');
       if (isDisabled !== undefined && typeof isDisabled !== 'boolean') throw new RequestError(400, 'Invalid account status.');
       const normalizedEmail = email === undefined ? undefined : normalizeEmail(text(email, 254));
       if (normalizedEmail !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) throw new RequestError(400, 'Invalid email.');
+      const normalizedNotificationEmail = notificationEmail === undefined ? undefined : (notificationEmail === null ? null : normalizeEmail(text(notificationEmail, 254)));
+      if (normalizedNotificationEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedNotificationEmail)) throw new RequestError(400, 'Invalid notification email.');
       if ('prepare' in db) transaction(db, () => {
         const actor = res.locals.requireCurrentUser();
         if (!actor.isSuperAdmin) throw new RequestError(403, 'Administrator required.');
@@ -69,6 +71,9 @@ export function accountAdminRoutes(db: DatabaseSync | AsyncDatabase, origin: str
             db.prepare("UPDATE account_access SET is_disabled=0,company_grants='[]',form_grants='{}' WHERE user_id=?").run(target.id!);
           }
         }
+        if (normalizedNotificationEmail !== undefined) {
+          db.prepare('UPDATE account_access SET notification_email=? WHERE user_id=?').run(normalizedNotificationEmail, target.id!);
+        }
       });
       else await db.transaction(async tx => {
         if (!(await res.locals.requireCurrentUserAsync(tx)).isSuperAdmin) throw new RequestError(403, 'Administrator required.');
@@ -97,6 +102,9 @@ export function accountAdminRoutes(db: DatabaseSync | AsyncDatabase, origin: str
             await tx.execute('DELETE FROM sessions WHERE user_id=?', [id]);
             await tx.execute('DELETE FROM password_resets WHERE user_id=?', [id]);
           }
+        }
+        if (normalizedNotificationEmail !== undefined) {
+          await tx.execute('UPDATE account_access SET notification_email=? WHERE user_id=?', [normalizedNotificationEmail, id]);
         }
       });
       res.status(204).end();

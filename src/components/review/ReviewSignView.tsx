@@ -1,6 +1,5 @@
 import { ReviewSupportingFiles } from './ReviewSupportingFiles';
 import { RndEvaluationPanel } from '../rnd/RndEvaluationPanel';
-import { RndFields } from '../rnd/RndFields';
 import React, { useState, useRef, useEffect } from 'react';
 import { canAdministerWorkflows } from '../../utils/workflowAdministration';
 import { canCompleteWithOutstandingSteps, canProposeFinalReplacement, configuredReplacementIds, usesConfiguredBackups } from '../../utils/routeReplacement';
@@ -11,12 +10,14 @@ import { AdminWorkFormData, AttachmentItem } from '../../types/index';
 import { getRequestDocumentVersion, RequestDocument } from '../document/RequestDocument';
 import { RouteProcessingPanel } from './RouteProcessingPanel';
 import { FinanceHoldPanel } from './FinanceHoldPanel';
-import { FinancialCorrectionFields } from './FinancialCorrectionFields';
 import { SignatureModal } from '../modals/SignatureModal';
 import { DocuSignProgressBanner } from './DocuSignProgressBanner';
 import { canOfferEarlyCompletion, outstandingSigners } from '../journey/RouteProgress';
-import { WorkspaceDialog } from '../common/WorkspaceDialog';
 import { ApprovalJourneyPanel } from '../journey/ApprovalJourneyPanel';
+import { ReturnRequestDialog } from './ReturnRequestDialog';
+import { CloseRequestDialog } from './CloseRequestDialog';
+import { CompleteRouteDialog } from './CompleteRouteDialog';
+import { CorrectionDialog } from './CorrectionDialog';
 import {
   FileText,
   Clock,
@@ -701,261 +702,81 @@ export const ReviewSignView: React.FC = () => {
 
       {/* Action Modal: Return for Correction */}
       {actionModal === 'return' && (
-        <WorkspaceDialog titleId="return-heading" busy={saving} onClose={() => setActionModal(null)} className="max-w-lg p-5">
-          <div className="w-full space-y-4">
-            <h3 id="return-heading" className="text-sm font-bold text-[#192B3C] flex items-center gap-2">
-              <RotateCcw className="w-4 h-4 text-amber-600" />
-              <span>Return Request for Correction</span>
-            </h3>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              Specify what corrections or additional documents the requester must provide:
-            </p>
-            {actionError && <p id="return-error" role="alert" className="text-xs text-rose-700">{actionError}</p>}
-            <textarea
-              data-dialog-focus
-              aria-label="Reason for return"
-              aria-invalid={Boolean(actionError)}
-              aria-describedby={actionError ? "return-error" : undefined}
-              disabled={saving}
-              rows={3}
-              value={actionReason}
-              onChange={(e) => setActionReason(e.target.value)}
-              placeholder="e.g. Please update work description and attach Chamber attestation..."
-              className="w-full px-3 py-2 text-xs border border-[#E2E5E9] rounded focus:outline-none focus:ring-1 focus:ring-[#365C78]"
-            />
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                disabled={saving}
-                onClick={() => { setActionError(null); setActionModal(null); }}
-                className="min-h-10 rounded-md px-3 text-xs font-semibold text-slate-700 enabled:hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#365C78] disabled:opacity-60"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={saving}
-                onClick={handleReturnSubmit}
-                className="px-4 py-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded shadow-xs"
-              >
-                {saving ? 'Saving…' : 'Confirm Return'}
-              </button>
-            </div>
-          </div>
-        </WorkspaceDialog>
+        <ReturnRequestDialog
+          saving={saving}
+          actionReason={actionReason}
+          actionError={actionError}
+          onReasonChange={setActionReason}
+          onClose={() => { setActionError(null); setActionModal(null); }}
+          onSubmit={handleReturnSubmit}
+        />
       )}
 
       {/* Action Modal: Reject Request */}
       {(actionModal === 'reject' || actionModal === 'cancel') && (
-        <WorkspaceDialog titleId="close-heading" busy={saving} onClose={() => setActionModal(null)} className="max-w-lg p-5">
-          <div className="w-full space-y-4">
-            <h3 id="close-heading" className="text-sm font-bold text-rose-700 flex items-center gap-2">
-              <XCircle className="w-4 h-4 text-rose-600" />
-              <span>{actionModal === 'cancel' ? 'Cancel request' : 'Reject request'}</span>
-            </h3>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              The request will close and its signing history will be kept.
-            </p>
-            <label htmlFor="close-reason" className="block text-sm font-semibold">Reason (required)</label>
-            {actionError && <p id="close-error" role="alert" className="text-xs text-rose-700">{actionError}</p>}
-            <textarea
-              id="close-reason"
-              data-dialog-focus
-              aria-invalid={!!actionError}
-              aria-describedby={actionError ? "close-error" : undefined}
-              disabled={saving}
-              rows={3}
-              value={actionReason}
-              onChange={(e) => setActionReason(e.target.value)}
-              placeholder="e.g. Outside of departmental budget scope / not approved by management..."
-              className="w-full px-3 py-2 text-xs border border-[#E2E5E9] rounded focus:outline-none focus:ring-1 focus:ring-rose-500"
-            />
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                disabled={saving}
-                onClick={() => setActionModal(null)}
-                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded"
-              >
-                Go back
-              </button>
-              <button
-                disabled={saving}
-                onClick={handleRejectSubmit}
-                className="px-4 py-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded shadow-xs"
-              >
-                {saving ? 'Saving…' : actionModal === 'cancel' ? 'Cancel request' : 'Reject request'}
-              </button>
-            </div>
-          </div>
-        </WorkspaceDialog>
+        <CloseRequestDialog
+          mode={actionModal}
+          saving={saving}
+          actionReason={actionReason}
+          actionError={actionError}
+          onReasonChange={setActionReason}
+          onClose={() => setActionModal(null)}
+          onSubmit={handleRejectSubmit}
+        />
       )}
 
+      {/* Action Modal: Route Completion / Override */}
       {actionModal === 'override' && !signatureModalOpen && (
-        <WorkspaceDialog titleId="route-completion-title" busy={saving} onClose={() => setActionModal(null)} className="max-w-md p-5">
-          <div className="w-full space-y-3">
-            <h2 id="route-completion-title" className="text-base font-bold">{completionLabel}</h2>
-            <p className="text-sm text-workspace-muted">This finishes signing. The following signers will be recorded as bypassed:</p>
-            <ul className="list-disc space-y-1 rounded-lg border border-amber-200 bg-amber-50 py-2 pl-8 pr-3 text-sm text-amber-900">
-              {outstanding.map(step => <li key={step.stageId}>{step.assignedUserName} · {step.stageName}</li>)}
-            </ul>
-            <label htmlFor="route-completion-reason" className="block text-sm font-semibold">Reason for bypassing (required)</label>
-            <textarea id="route-completion-reason" data-dialog-focus disabled={saving} rows={3} value={actionReason}
-              aria-invalid={!!actionError} aria-describedby={actionError ? 'route-completion-error' : undefined}
-              onChange={event => setActionReason(event.target.value)} className="workspace-control w-full p-2 text-sm" />
-            {actionError && <p id="route-completion-error" role="alert" className="text-sm text-rose-700">{actionError}</p>}
-            <div className="flex flex-wrap justify-end gap-2">
-              <button type="button" disabled={saving} className="workspace-control min-h-10 px-3 text-sm" onClick={() => setActionModal(null)}>Cancel</button>
-              <button type="button" disabled={saving} className="workspace-primary min-h-10 px-3 text-sm" onClick={() => {
-                if (completionRecordTime.current !== request.updatedAt) {
-                  setActionError('The request changed. Close this dialog and review the latest request.');
-                  return;
-                }
-                if (!actionReason.trim()) {
-                  setActionError('Enter a reason before continuing.');
-                  document.getElementById('route-completion-reason')?.focus();
-                  return;
-                }
-                setActionError(null);
-                if (finalAlreadySigned) void handleFinalRouteCompletionSubmit('');
-                else {
-                  setSignatureAction('override');
-                  signingRecordTime.current = request.updatedAt;
-                  setSignatureModalOpen(true);
-                }
-              }}>{saving ? 'Saving…' : finalAlreadySigned ? 'Complete request' : 'Continue to signature'}</button>
-            </div>
-          </div>
-        </WorkspaceDialog>
+        <CompleteRouteDialog
+          saving={saving}
+          completionLabel={completionLabel}
+          outstanding={outstanding}
+          actionReason={actionReason}
+          actionError={actionError}
+          finalAlreadySigned={finalAlreadySigned}
+          onReasonChange={setActionReason}
+          onClose={() => setActionModal(null)}
+          onSubmit={() => {
+            if (completionRecordTime.current !== request.updatedAt) {
+              setActionError('The request changed. Close this dialog and review the latest request.');
+              return;
+            }
+            if (!actionReason.trim()) {
+              setActionError('Enter a reason before continuing.');
+              document.getElementById('route-completion-reason')?.focus();
+              return;
+            }
+            setActionError(null);
+            if (finalAlreadySigned) void handleFinalRouteCompletionSubmit('');
+            else {
+              setSignatureAction('override');
+              signingRecordTime.current = request.updatedAt;
+              setSignatureModalOpen(true);
+            }
+          }}
+        />
       )}
 
       {/* Action Modal: Resubmit Request */}
       {actionModal === 'resubmit' && (
-        <WorkspaceDialog titleId="correction-heading" busy={saving} onClose={() => setActionModal(null)} className="max-w-lg p-5">
-          <div className="w-full space-y-4">
-            <div className="border-b border-[#E2E5E9] pb-3">
-              <h3 id="correction-heading" className="text-base font-semibold text-[#192B3C]">
-                Revise &amp; Resubmit Request (Version {request.documentVersion + 1})
-              </h3>
-              <p className="text-xs text-slate-500">
-                Make the requested changes and sign the new version. It goes back to the first approver.
-              </p>
-            </div>
-
-            {actionError && <p role="alert" className="text-xs text-rose-700">{actionError}</p>}
-            <div className="space-y-3 text-xs">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label>Date of request
-                  <input className="w-full px-3 py-1.5 border rounded" value={correctedForm.dateOfRequest} onChange={(e) => setCorrectedForm((prev) => ({ ...prev, dateOfRequest: e.target.value }))} />
-                </label>
-                <label>Department
-                  <input className="w-full px-3 py-1.5 border rounded" value={correctedForm.department} onChange={(e) => setCorrectedForm((prev) => ({ ...prev, department: e.target.value }))} />
-                </label>
-                <label>Priority
-                  <select className="w-full px-3 py-1.5 border rounded" value={correctedForm.priority} onChange={(e) => setCorrectedForm((prev) => ({ ...prev, priority: e.target.value as AdminWorkFormData['priority'] }))}>
-                    <option>Urgent</option><option>Medium</option><option>Low</option>
-                  </select>
-                </label>
-              </div>
-              {correctedForm.rnd ? <RndFields value={correctedForm.rnd} onChange={rnd => setCorrectedForm(previous => ({ ...previous, rnd, workDescription: rnd.fields.inpProbTitle ?? '', department: rnd.fields.inpDept ?? '', dateOfRequest: rnd.fields.inpSubDate ?? '' }))} /> : correctedForm.administrativePayment || correctedForm.expenseClaim
-                ? <FinancialCorrectionFields data={correctedForm} attachments={correctedAttachments} onChange={setCorrectedForm} />
-                : request.formType === 'IT Request' ? (
-                <fieldset className="space-y-2">
-                  <legend className="font-semibold">IT request details</legend>
-                  <label className="block">Type of request
-                    <input maxLength={150} className="w-full rounded border px-3 py-1.5" value={correctedForm.itRequest?.requestType ?? ''}
-                      onChange={event => setCorrectedForm({ ...correctedForm, itRequest: { requestType: event.target.value, justification: correctedForm.itRequest?.justification ?? '' } })} />
-                  </label>
-                  <label className="block">Business justification
-                    <textarea maxLength={10000} className="w-full rounded border px-3 py-1.5" value={correctedForm.itRequest?.justification ?? ''}
-                      onChange={event => setCorrectedForm({ ...correctedForm, itRequest: { requestType: correctedForm.itRequest?.requestType ?? '', justification: event.target.value } })} />
-                  </label>
-                </fieldset>
-              ) : <fieldset className="space-y-1">
-                <legend className="font-semibold">Documents</legend>
-                {([
-                  ['onlineDocumentChamber', 'Online Document Chamber'], ['physicalDocumentChamber', 'Physical Document Chamber'],
-                  ['companyDocumentAjeer', 'Company document Ajeer'], ['employeeSalaryCertificate', 'Employee Salary Certificate'],
-                  ['permanentEmploymentVisa', 'Permanent Employment Visa'], ['workVisitVisa', 'Work Visit Visa'],
-                  ['businessVisitVisa', 'Business Visit Visa'], ['agencyWakala', 'Agency Wakala'], ['others', 'Others'],
-                ] as const).map(([key, label]) => (
-                  <label key={key} className="flex gap-2 items-center">
-                    <input type="checkbox" checked={correctedForm.documents[key]} onChange={(e) => setCorrectedForm((prev) => ({ ...prev, documents: { ...prev.documents, [key]: e.target.checked } }))} />{label}
-                  </label>
-                ))}
-                {correctedForm.documents.others && <input aria-label="Other documents" className="w-full px-3 py-1.5 border rounded" value={correctedForm.documents.othersDescription} onChange={(e) => setCorrectedForm((prev) => ({ ...prev, documents: { ...prev.documents, othersDescription: e.target.value } }))} />}
-              </fieldset>}
-              <div className="space-y-1">
-                <label className="font-semibold">Attachments <input type="file" multiple onChange={(event) => {
-                  Array.from(event.target.files || []).forEach((file) => {
-                    const reader = new FileReader();
-                    reader.onload = () => setCorrectedAttachments((prev) => [...prev, {
-                      id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: file.name, sizeBytes: file.size,
-                      sizeFormatted: `${Math.ceil(file.size / 1024)} KB`, uploadedAt: new Date().toISOString(), uploadedBy: currentUser.name,
-                      mimeType: file.type || 'application/octet-stream', dataUrl: String(reader.result),
-                    }]);
-                    reader.readAsDataURL(file);
-                  });
-                  event.target.value = '';
-                }} /></label>
-                {correctedAttachments.map((attachment, index) => {
-                  const preservesReceiptOrder = [request.formData.expenseClaim, correctedForm.expenseClaim]
-                    .some(claim => claim?.lines.some(line => line.receiptIndex !== undefined && line.receiptIndex >= index));
-                  return <div key={attachment.id} className="flex justify-between">
-                    <span>{attachment.name}</span>
-                    {preservesReceiptOrder ? <span className="text-slate-500">Kept for receipt links</span>
-                      : <button type="button" onClick={() => setCorrectedAttachments(prev => prev.filter(item => item.id !== attachment.id))}>Remove</button>}
-                  </div>;
-                })}
-              </div>
-              <div>
-                <label htmlFor="corrected-work-description" className="block font-semibold text-slate-700 mb-1">
-                  Updated work description
-                </label>
-                <textarea
-                  id="corrected-work-description"
-                  rows={3}
-                  value={correctedForm.workDescription}
-                  onChange={(e) =>
-                    setCorrectedForm((prev) => ({ ...prev, workDescription: e.target.value }))
-                  }
-                  className="w-full px-3 py-2 border border-[#E2E5E9] rounded focus:outline-none focus:ring-1 focus:ring-[#365C78]"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="resubmit-change-note" className="block font-semibold text-slate-700 mb-1">
-                  What changed? (optional)
-                </label>
-                <input
-                  id="resubmit-change-note"
-                  type="text"
-                  maxLength={2000}
-                  value={resubmitChangeNote}
-                  onChange={(e) => setResubmitChangeNote(e.target.value)}
-                  placeholder="Summarize the changes you made"
-                  aria-describedby="resubmit-change-note-help"
-                  className="w-full px-3 py-1.5 border border-[#E2E5E9] rounded focus:outline-none focus:ring-1 focus:ring-[#365C78]"
-                />
-                <p id="resubmit-change-note-help" className="mt-1 text-slate-600">Your note will appear in the request history.</p>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-[#E2E5E9]">
-              <button
-                disabled={saving}
-                onClick={() => setActionModal(null)}
-                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={saving}
-                onClick={() => { setSignatureAction('resubmit'); signingRecordTime.current = request.updatedAt; setSignatureModalOpen(true); }}
-                className="min-h-10 rounded-md bg-[#192B3C] px-4 text-xs font-semibold text-white enabled:hover:bg-[#2A4A62] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#365C78] disabled:opacity-60"
-              >
-                Review &amp; sign revision
-              </button>
-            </div>
-          </div>
-        </WorkspaceDialog>
+        <CorrectionDialog
+          request={request}
+          currentUser={currentUser}
+          saving={saving}
+          actionError={actionError}
+          correctedForm={correctedForm}
+          correctedAttachments={correctedAttachments}
+          resubmitChangeNote={resubmitChangeNote}
+          onFormChange={setCorrectedForm}
+          onAttachmentsChange={setCorrectedAttachments}
+          onChangeNoteChange={setResubmitChangeNote}
+          onClose={() => setActionModal(null)}
+          onSubmit={() => {
+            setSignatureAction('resubmit');
+            signingRecordTime.current = request.updatedAt;
+            setSignatureModalOpen(true);
+          }}
+        />
       )}
 
       {/* Signature Confirmation Modal */}

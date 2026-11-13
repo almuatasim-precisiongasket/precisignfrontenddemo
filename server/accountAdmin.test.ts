@@ -3,17 +3,19 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { openDatabase } from './db';
 import { createSession, provisionUser, sessionUser, tokenHash, sessionUserAsync, hashPassword } from './auth';
-import { openAsyncDatabase, migrateAsyncDatabase } from './asyncDatabase';
+import { openAsyncDatabase, migrateAsyncDatabase, type AsyncDatabase } from './asyncDatabase';
 import { randomUUID } from 'node:crypto';
 import { createApp } from './app';
+import { initRemoteTursoTestDb } from './tursoTestSafety';
 
 test('super-admin directory preserves identity, revokes sessions, and clears access on disable', async () => {
   const url = process.env.PRECISIGN_TURSO_TEST_URL;
-  if (url && new URL(url).hostname !== 'precisign-test-muatasim.aws-ap-south-1.turso.io') throw new Error('Use the separate test database.');
-  const remote = url ? openAsyncDatabase(url, process.env.PRECISIGN_TURSO_TEST_TOKEN) : undefined;
+  let remote: AsyncDatabase | undefined;
+  if (url) {
+    remote = await initRemoteTursoTestDb('accountAdmin test');
+  }
   const local = remote ? undefined : openDatabase(':memory:');
   const db = remote ?? local!;
-  if (remote) await migrateAsyncDatabase(remote);
   const execute = async (sql: string, ...args: (string | number)[]) => remote ? (await remote.execute(sql, args)).rows : local!.prepare(sql).all(...args);
   const suffix = remote ? randomUUID() : 'local';
   const adminEmail = remote ? `admin-${suffix}@example.test` : 'admin@example.test';

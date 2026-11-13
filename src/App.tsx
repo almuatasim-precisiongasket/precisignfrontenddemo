@@ -65,6 +65,75 @@ const MainLayout: React.FC<{ repository?: ApiPreciSignRepository; onSignOut?: ()
     return <div className="p-6 text-sm">{draftError ? <><p role="alert">{draftError}</p><button onClick={retryDraft} className="mt-2 underline">Retry</button></> : <p role="status">Loading draft…</p>}</div>;
   }
 
+  function renderMainContent() {
+    if (activeView === 'not-found' || blockedSettings || blockedForm) {
+      return unavailable;
+    }
+
+    if (activeView === 'review-sign') {
+      if (requestRouteStatus === 'loading') {
+        return <p role="status" className="p-6">Loading request…</p>;
+      }
+      if (requestRouteStatus === 'unavailable') {
+        return unavailable;
+      }
+      if (requestRouteStatus === 'error') {
+        return (
+          <section role="alert" className="workspace-panel m-6 max-w-xl space-y-3 p-6">
+            <h1 className="text-xl font-bold">Could not load request</h1>
+            <p className="text-sm text-workspace-muted">Check your connection or sign in again, then try again.</p>
+            <button type="button" className="workspace-primary min-h-10 px-4" onClick={retryRequestRoute}>Try again</button>
+          </section>
+        );
+      }
+      return <ReviewSignView key={`${currentUser.id}:${selectedScope}:${selectedRequestId}`} />;
+    }
+
+    if (activeView === 'user-directory' && canOpenDirectory && administration) {
+      return <AccountDirectoryView repository={administration} />;
+    }
+
+    if (activeView === 'company-branding' && canOpenDirectory && administration) {
+      return <CompanyBrandingView repository={administration} />;
+    }
+
+    if (activeView === 'user-profile') {
+      return <UserProfileView key={currentUser.id} />;
+    }
+
+    if (awaitingAccess) {
+      return (
+        <section className="workspace-panel mx-4 my-6 max-w-xl space-y-3 p-6 sm:mx-6">
+          <span className="grid size-12 place-items-center rounded-xl bg-workspace-tint text-workspace-teal">
+            <Building2 aria-hidden="true" />
+          </span>
+          <h1 className="text-2xl font-bold">Welcome, {currentUser.name}</h1>
+          <p className="text-sm text-workspace-muted">You haven’t been assigned a company yet. Ask your account administrator for access.</p>
+          <button type="button" className="workspace-control preci-press min-h-10 px-3 text-sm font-semibold" onClick={() => setActiveView('user-profile')}>
+            Set up your signature
+          </button>
+        </section>
+      );
+    }
+
+    switch (activeView) {
+      case 'create-request':
+        return renderRequestEditor();
+      case 'forms-library':
+        return <FormsLibraryView />;
+      case 'archive':
+        return <ArchiveRegisterView />;
+      case 'workflow-settings':
+        return <WorkflowSettingsView />;
+      case 'dashboard':
+      case 'requests':
+      case 'user-directory':
+        return <DashboardView key={activeView} />;
+      default:
+        return unavailable;
+    }
+  }
+
   return (
     <div className="preci-shell flex min-h-screen bg-workspace text-workspace-ink">
       <AppSidebar canOpenDirectory={canOpenDirectory} onSignOut={onSignOut} desktopHidden={sidebarHidden} onHideDesktop={() => setSidebarHidden(true)} />
@@ -73,23 +142,7 @@ const MainLayout: React.FC<{ repository?: ApiPreciSignRepository; onSignOut?: ()
         <AppHeader onSignOut={onSignOut} sidebarHidden={sidebarHidden} onToggleSidebar={() => setSidebarHidden(value => !value)} />
         {isShowcaseBuild && <ShowcaseBar />}
         <main className="flex-1 pb-16">
-          {activeView === 'not-found' || blockedSettings || blockedForm ? unavailable
-          : activeView === 'review-sign' ? requestRouteStatus === 'loading' ? <p role="status" className="p-6">Loading request…</p> : requestRouteStatus === 'unavailable' ? unavailable : requestRouteStatus === 'error' ? <section role="alert" className="workspace-panel m-6 max-w-xl space-y-3 p-6"><h1 className="text-xl font-bold">Could not load request</h1><p className="text-sm text-workspace-muted">Check your connection or sign in again, then try again.</p><button type="button" className="workspace-primary min-h-10 px-4" onClick={retryRequestRoute}>Try again</button></section> : <ReviewSignView key={`${currentUser.id}:${selectedScope}:${selectedRequestId}`} />
-          : activeView === 'user-directory' && canOpenDirectory && administration ? <AccountDirectoryView repository={administration} />
-          : activeView === 'company-branding' && canOpenDirectory && administration ? <CompanyBrandingView repository={administration} />
-          : activeView === 'user-profile' ? <UserProfileView key={currentUser.id} />
-          : awaitingAccess ? <section className="workspace-panel mx-4 my-6 max-w-xl space-y-3 p-6 sm:mx-6">
-            <span className="grid size-12 place-items-center rounded-xl bg-workspace-tint text-workspace-teal"><Building2 aria-hidden="true" /></span>
-            <h1 className="text-2xl font-bold">Welcome, {currentUser.name}</h1>
-            <p className="text-sm text-workspace-muted">You haven’t been assigned a company yet. Ask your account administrator for access.</p>
-            <button type="button" className="workspace-control preci-press min-h-10 px-3 text-sm font-semibold" onClick={() => setActiveView('user-profile')}>Set up your signature</button>
-          </section> : <>
-          {(activeView === 'dashboard' || activeView === 'requests' || activeView === 'user-directory') && <DashboardView key={activeView} />}
-          {activeView === 'create-request' && renderRequestEditor()}
-          {activeView === 'forms-library' && <FormsLibraryView />}
-          {activeView === 'archive' && <ArchiveRegisterView />}
-          {activeView === 'workflow-settings' && <WorkflowSettingsView />}
-          </>}
+          {renderMainContent()}
         </main>
         {navigationPrompt && <WorkspaceDialog titleId="leave-page-heading" onClose={navigationPrompt.stay} className="max-w-md p-6">
           <h2 id="leave-page-heading" className="text-lg font-bold">Leave this page?</h2>

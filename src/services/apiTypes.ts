@@ -17,6 +17,7 @@ export interface SubmitInput {
   signatureDataUrl: string;
   attachments?: AttachmentItem[];
   comment?: string;
+  emailNote?: string;
 }
 export interface ApprovalInput { expectedRevision: number; signatureDataUrl: string; comment?: string; }
 export interface ReasonInput { expectedRevision: number; reason: string; }

@@ -102,6 +102,7 @@ export interface AdminWorkFormData {
   workDescription: string;
   documents: AdminWorkFormChecklist;
   administrativePayment?: AdministrativePaymentDetails;
+  emailNote?: string;
   itRequest?: { requestType: string; justification: string };
   cashVoucher?: { payee: string; recipientUserId?: string; amount: string; amountInWords: string; source: 'Admin petty cash' | 'Accounts cash' };
   expenseClaim?: { designation: string; project: string; lines: { date: string; particulars: string; amount: string; noBillReason?: string; receiptIndex?: number }[]; departmentHeadSignature?: { name: string; dataUrl: string } };
@@ -244,6 +245,8 @@ export interface RequestRecord {
   formerSignerIds?: string[];
   pendingReplacement?: { stageId: string; oldUserId: string; newUserId: string; reason: string; proposedBy: string };
   id: string;
+  displayId?: string;
+  emailNote?: string;
   formType: 'Admin Work Request' | 'Administrative & Payment Request' | 'Payment Request' | 'IT Request' | 'Cash Voucher' | 'Expense Claim' | 'IT Asset Allocation' | 'Undertaking Guarantee' | 'R&D Initiative';
   companyId: CompanyId;
   title: string;

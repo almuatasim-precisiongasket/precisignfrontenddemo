@@ -114,6 +114,7 @@ export const CreateRequestView: React.FC = () => {
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [signatureModalOpen, setSignatureModalOpen] = useState(false);
+  const [emailNote, setEmailNote] = useState('');
   const submitting = useRef(false);
   const [submittingNow, setSubmittingNow] = useState(false);
   const [draftSaving, setDraftSaving] = useState(false);
@@ -295,7 +296,7 @@ export const CreateRequestView: React.FC = () => {
     setSignatureModalOpen(true);
   };
 
-  const handleConfirmedSubmit = async (signatureDataUrl: string, note?: string) => {
+  const handleConfirmedSubmit = async (signatureDataUrl: string, note?: string, emailNoteValue?: string) => {
     if (submitting.current) return;
     submitting.current = true; setSubmittingNow(true);
     const result = await submitNewRequest(
@@ -303,7 +304,8 @@ export const CreateRequestView: React.FC = () => {
       attachments,
       note,
       signatureDataUrl,
-      combined ? choices : undefined
+      combined ? choices : undefined,
+      emailNoteValue ?? (combined ? emailNote : undefined)
     );
     if (result.success && result.newId) {
       setFeedbackSuccess(`Request ${result.newId} created and submitted successfully.`);
@@ -706,17 +708,46 @@ export const CreateRequestView: React.FC = () => {
       </div>
 
       {/* Signature Confirmation Modal */}
-      {(
-        <SignatureModal
-          isOpen={signatureModalOpen}
-          onClose={() => setSignatureModalOpen(false)}
-          user={currentUser}
-          title={`Sign & Submit ${formName}`}
-          confirmLabel="Apply Signature & Submit"
-          noteLabel="Note to signers"
-          onConfirm={handleConfirmedSubmit}
-        />
-      )}
+      {(() => {
+        const previewSelection = signingWorkflow && applySignerChoices(signingWorkflow, users, currentUser.id, choices);
+        const resolvedStagesCount = (previewSelection && !('error' in previewSelection))
+          ? previewSelection.workflow.stages.length
+          : (signingWorkflow?.stages.length ?? 1);
+
+        return (
+          <SignatureModal
+            isOpen={signatureModalOpen}
+            onClose={() => setSignatureModalOpen(false)}
+            user={currentUser}
+            title={`Sign & Submit ${formName}`}
+            confirmLabel="Apply Signature & Submit"
+            noteLabel="Note to signers"
+            emailPreviewConfig={combined ? {
+              formType: formName,
+              companyName: resolvedCompany.fullName,
+              fields: [
+                { label: 'Date of Request', value: dateOfRequest },
+                { label: 'Name of the Requester', value: currentUser.name },
+                { label: 'Department', value: department },
+                { label: 'Priority', value: priority || 'Medium' },
+                { label: 'Documents', value: documentDescription || (documents?.others ? documents.othersDescription || 'Supporting documents' : 'Checklist attached') },
+              ],
+              workDescription,
+              paymentDetails: payment ? {
+                amount: payment.amount ? `${payment.amount} SAR` : '—',
+                transferMode: payment.transferMode,
+                transferDetails: payment.transferDetails,
+                purpose: payment.purpose === 'Other' ? (payment.otherPurpose || 'Other') : payment.purpose,
+              } : undefined,
+              emailNote,
+              onEmailNoteChange: setEmailNote,
+              stageNumber: 1,
+              totalStages: resolvedStagesCount,
+            } : undefined}
+            onConfirm={handleConfirmedSubmit}
+          />
+        );
+      })()}
     </div>
   );
 };

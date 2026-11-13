@@ -3,6 +3,18 @@ import React, { useRef, useState, useEffect } from 'react';
 import { UserProfile } from '../../types/index';
 import { X, PenTool, Type, Upload, Check, Shield } from 'lucide-react';
 
+export interface EmailPreviewConfig {
+  formType: string;
+  companyName: string;
+  fields: { label: string; value: string }[];
+  workDescription?: string;
+  paymentDetails?: { amount: string; transferMode: string; purpose: string; transferDetails?: string };
+  emailNote: string;
+  onEmailNoteChange: (val: string) => void;
+  stageNumber?: number;
+  totalStages?: number;
+}
+
 interface SignatureModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -11,7 +23,8 @@ interface SignatureModalProps {
   confirmLabel?: string;
   noteLabel?: string;
   reviewContext?: { version: number; responsibility: string };
-  onConfirm: (signatureDataUrl: string, note?: string) => Promise<{ success: boolean; error?: string } | undefined>;
+  emailPreviewConfig?: EmailPreviewConfig;
+  onConfirm: (signatureDataUrl: string, note?: string, emailNote?: string) => Promise<{ success: boolean; error?: string } | undefined>;
 }
 
 export const SignatureModal: React.FC<SignatureModalProps> = ({
@@ -22,6 +35,7 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
   confirmLabel = 'Confirm & Apply Signature',
   noteLabel,
   reviewContext,
+  emailPreviewConfig,
   onConfirm,
 }) => {
   const [tab, setTab] = useState<'style' | 'draw' | 'upload' | 'saved'>('style');
@@ -141,7 +155,11 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
     savingRef.current = true;
     setSaving(true);
     try {
-      const result = await onConfirm(finalDataUrl, noteLabel ? note.trim() || undefined : undefined);
+      const result = await onConfirm(
+        finalDataUrl,
+        noteLabel ? note.trim() || undefined : undefined,
+        emailPreviewConfig ? emailPreviewConfig.emailNote.trim() || undefined : undefined
+      );
       if (result?.success) onClose();
       else setSignatureError(result?.error || 'The save was not confirmed. Your signature and entries are preserved.');
     } catch {
@@ -220,6 +238,127 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
         {/* Content */}
         <fieldset disabled={saving} className="p-6 space-y-4">
           {signatureError && <p role="alert" className="text-xs text-rose-700">{signatureError}</p>}
+          {emailPreviewConfig && (
+            <div className="rounded-lg border border-teal-200 bg-teal-50/30 p-3.5 space-y-3 text-xs">
+              <div className="flex items-center justify-between border-b border-teal-200/80 pb-2">
+                <div>
+                  <span className="font-bold text-teal-950 block text-xs">Notification Email Preview</span>
+                  <span className="text-[10px] text-teal-700">What signers will see in their inbox</span>
+                </div>
+                <span className="px-2 py-0.5 rounded bg-teal-100 text-teal-800 text-[10px] font-bold tracking-wider">ACTION REQUIRED</span>
+              </div>
+
+              {/* Email Body Simulation — Approved Variant 3 Layout */}
+              <div className="rounded-lg border border-slate-200 bg-white overflow-hidden shadow-sm text-[11px]">
+                {/* Corporate Navy Header Banner */}
+                <div className="bg-[#0A1E35] px-3 py-2.5 border-b-2 border-[#0D9488] flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 bg-white rounded flex items-center justify-center shadow-xs">
+                      <img src="/assets/precisign-p-logo.png" alt="P" className="h-4 w-auto object-contain" />
+                    </div>
+                    <span className="text-white font-bold text-xs tracking-tight">PreciSign</span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full bg-teal-900/60 border border-teal-500/50 text-[#5EEAD4] text-[9px] font-bold tracking-wider">
+                    {emailPreviewConfig.totalStages && emailPreviewConfig.totalStages > 0
+                      ? `STAGE ${emailPreviewConfig.stageNumber ?? 1} OF ${emailPreviewConfig.totalStages}`
+                      : 'ACTION REQUIRED'}
+                  </span>
+                </div>
+
+                <div className="p-3 space-y-2.5">
+                  <div>
+                    <span className="inline-block px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 text-[9px] font-bold uppercase tracking-wider mb-1">
+                      Action Required
+                    </span>
+                    <div className="text-xs font-bold text-slate-900">Your signature is needed</div>
+                    <div className="text-[10px] text-slate-500">Hi [Signer], {user.name} submitted this request for your review.</div>
+                  </div>
+
+                  {/* Payment Amount Box */}
+                  {emailPreviewConfig.paymentDetails ? (
+                    <div className="rounded-md border border-emerald-200 bg-emerald-50/70 p-2.5 flex items-center justify-between">
+                      <div>
+                        <div className="text-[9px] font-bold text-emerald-800 uppercase tracking-wider">Payment Amount</div>
+                        <div className="text-sm font-extrabold text-emerald-950 mt-0.5">
+                          {emailPreviewConfig.paymentDetails.amount}
+                        </div>
+                      </div>
+                      <div className="bg-[#0D9488] text-white px-3 py-1 rounded font-bold text-[10px] shadow-xs flex items-center gap-1">
+                        <span>Open in PreciSign</span>
+                        <span>&rarr;</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="pt-0.5">
+                      <div className="inline-flex items-center gap-1 bg-[#0D9488] text-white px-3.5 py-1 rounded font-bold text-[10px] shadow-xs">
+                        <span>Open in PreciSign</span>
+                        <span>&rarr;</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Simulated Dynamic Request Summary Card */}
+                  <div className="rounded-md border border-slate-200 bg-[#F8FAFC] p-2.5 space-y-1.5">
+                    <div className="font-bold text-slate-900 text-[10px]">Request summary</div>
+                    <div className="space-y-1 divide-y divide-slate-200/60 text-[10px]">
+                      <div className="flex justify-between py-0.5"><span className="text-slate-500">Company</span><span className="font-semibold text-slate-900">{emailPreviewConfig.companyName}</span></div>
+                      <div className="flex justify-between py-0.5"><span className="text-slate-500">Form</span><span className="text-slate-900">{emailPreviewConfig.formType}</span></div>
+                      <div className="flex justify-between py-0.5"><span className="text-slate-500">Reference</span><span className="font-mono font-semibold text-slate-800">Assigned on submit</span></div>
+                      <div className="flex justify-between py-0.5"><span className="text-slate-500">Requester</span><span className="text-slate-900">{user.name}</span></div>
+                      {emailPreviewConfig.workDescription && (
+                        <div className="flex justify-between py-0.5"><span className="text-slate-500">Work</span><span className="text-slate-900 text-right truncate max-w-[180px]">{emailPreviewConfig.workDescription}</span></div>
+                      )}
+                      {emailPreviewConfig.paymentDetails?.purpose && (
+                        <div className="flex justify-between py-0.5"><span className="text-slate-500">Purpose</span><span className="text-slate-900 text-right truncate max-w-[180px]">{emailPreviewConfig.paymentDetails.purpose}</span></div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* PreciRoute Trail Simulation */}
+                  <div className="rounded-md border border-slate-200 bg-white p-2.5 space-y-1.5">
+                    <div className="font-bold text-slate-900 text-[9px] uppercase tracking-wider">PreciRoute Trail</div>
+                    <div className="flex items-start gap-2 pt-0.5">
+                      <div className="w-5 h-5 rounded-full bg-teal-100 text-teal-800 flex items-center justify-center font-bold text-[9px] shrink-0">
+                        {user.name.trim()[0]?.toUpperCase() || 'R'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[10px]">
+                          <strong className="text-slate-900">{user.name} (Requester)</strong>
+                          <span className="text-slate-400">&nbsp;&middot;&nbsp;Submitted</span>
+                        </div>
+                        <div className="mt-1 bg-slate-50 border-l-2 border-teal-600 px-2 py-1 rounded-r text-[10px] text-slate-700 italic">
+                          {emailPreviewConfig.emailNote.trim() ? emailPreviewConfig.emailNote : '(Note entered below will appear here)'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Clean Footer note */}
+                  <div className="pt-1 border-t border-slate-100 text-center text-[9px] text-slate-400">
+                    View the full form and attachments in <span className="text-teal-700 font-semibold underline">PreciSign</span>.
+                  </div>
+                </div>
+              </div>
+
+              {/* Note input field */}
+              <div className="pt-1">
+                <label className="block space-y-1 text-xs">
+                  <span className="font-bold text-teal-950">Note for email (optional)</span>
+                  <textarea
+                    rows={2}
+                    maxLength={1000}
+                    value={emailPreviewConfig.emailNote}
+                    onChange={e => emailPreviewConfig.onEmailNoteChange(e.target.value)}
+                    placeholder="e.g. Please review before the next workshop shift."
+                    className="workspace-control block w-full rounded-md px-3 py-1.5 text-xs bg-white border border-teal-300"
+                  />
+                  <span className="block text-[11px] text-slate-600">
+                    Rendered below the form in the notification email. Separate from internal workflow remarks.
+                  </span>
+                </label>
+              </div>
+            </div>
+          )}
           {tab === 'saved' && user.signatureDataUrl && <div className="rounded-lg border border-workspace-line bg-workspace p-4"><p className="mb-3 text-xs font-medium">Your saved signature</p><img src={user.signatureDataUrl} alt={`Saved signature for ${user.name}`} className="mx-auto h-20 max-w-full object-contain" /></div>}
           {tab === 'style' && (
             <div className="space-y-3">

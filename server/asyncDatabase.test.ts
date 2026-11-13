@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { migrateAsyncDatabase, openAsyncDatabase } from './asyncDatabase';
+import { migrateAsyncDatabase, openAsyncDatabase, isSafeToRetry } from './asyncDatabase';
 import { openDatabase } from './db';
 import { ownSignatureAsync, profileRoutes, saveOwnSignatureAsync } from './profile';
 import express from 'express';
@@ -84,7 +84,7 @@ test('async schema migration creates the application schema and is repeatable', 
     await migrateAsyncDatabase(db);
     await migrateAsyncDatabase(db);
     const version = await db.execute('SELECT version FROM precisign_schema_version WHERE id=1');
-    assert.equal(Number(version.rows[0].version), 9);
+    assert.equal(Number(version.rows[0].version), 10);
     const companies = await db.execute('SELECT id FROM companies ORDER BY id');
     assert.deepEqual(companies.rows.map(row => row.id), ['FSG', 'ICCL', 'PEW']);
     const requests = await db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='requests'");
@@ -211,4 +211,114 @@ test('Express authentication uses asynchronous storage', async () => {
     assert.equal((await post('/auth/logout', {}, cookie)).status, 204);
     assert.equal((await fetch(base + '/auth/me', { headers: { cookie } })).status, 401);
   } finally { server.close(); db.close(); }
+});
+
+test('isSafeToRetry correctly classifies read vs write statements', () => {
+  // Safe read statements (allowed to retry on connection drops)
+  assert.equal(isSafeToRetry('SELECT * FROM users'), true);
+  assert.equal(isSafeToRetry('   SELECT count(*) as c FROM requests WHERE company_id=?'), true);
+  assert.equal(isSafeToRetry('/* comment */ SELECT 1'), true);
+  assert.equal(isSafeToRetry('-- leading comment\nSELECT id, value FROM events'), true);
+  assert.equal(isSafeToRetry('EXPLAIN QUERY PLAN SELECT 1'), true);
+  assert.equal(isSafeToRetry('PRAGMA table_info(users)'), true);
+  assert.equal(isSafeToRetry("PRAGMA table_info('users')"), true);
+  assert.equal(isSafeToRetry('PRAGMA user_version'), true);
+  assert.equal(isSafeToRetry('PRAGMA integrity_check'), true);
+  assert.equal(isSafeToRetry('PRAGMA quick_check'), true);
+
+  // Unsafe write statements (must NEVER automatically retry)
+  assert.equal(isSafeToRetry('INSERT INTO users VALUES (?, ?)'), false);
+  assert.equal(isSafeToRetry('UPDATE users SET name=? WHERE id=?'), false);
+  assert.equal(isSafeToRetry('DELETE FROM sessions WHERE user_id=?'), false);
+  assert.equal(isSafeToRetry('CREATE TABLE events (id INT)'), false);
+  assert.equal(isSafeToRetry('DROP TABLE IF EXISTS events'), false);
+  assert.equal(isSafeToRetry('ALTER TABLE users ADD COLUMN note TEXT'), false);
+  assert.equal(isSafeToRetry('SELECT 1; DELETE FROM users;'), false);
+  assert.equal(isSafeToRetry('SELECT 1; PRAGMA user_version = 4;'), false);
+
+  // Writable / action SQLite PRAGMAs (tightened: must NEVER retry)
+  assert.equal(isSafeToRetry('PRAGMA user_version = 4'), false);
+  assert.equal(isSafeToRetry('PRAGMA user_version(4)'), false);
+  assert.equal(isSafeToRetry('PRAGMA foreign_keys = ON'), false);
+  assert.equal(isSafeToRetry('PRAGMA foreign_keys(1)'), false);
+  assert.equal(isSafeToRetry('PRAGMA foreign_keys(ON)'), false);
+  assert.equal(isSafeToRetry('PRAGMA journal_mode = WAL'), false);
+  assert.equal(isSafeToRetry('PRAGMA journal_mode(WAL)'), false);
+  assert.equal(isSafeToRetry('PRAGMA wal_checkpoint'), false);
+  assert.equal(isSafeToRetry('PRAGMA wal_checkpoint(TRUNCATE)'), false);
+  assert.equal(isSafeToRetry('PRAGMA optimize'), false);
+  assert.equal(isSafeToRetry('PRAGMA shrink_memory'), false);
+  assert.equal(isSafeToRetry('PRAGMA incremental_vacuum'), false);
+  assert.equal(isSafeToRetry('PRAGMA busy_timeout(5000)'), false);
+  assert.equal(isSafeToRetry('PRAGMA busy_timeout = 0'), false);
+});
+
+test('failed write statements execute only once and never retry on connection errors', async () => {
+  const writeStatements = [
+    { sql: 'INSERT INTO events (id, value) VALUES (?, ?)', args: [1, 'first'] },
+    { sql: 'UPDATE events SET value=? WHERE id=?', args: ['modified', 1] },
+    { sql: 'DELETE FROM events WHERE id=?', args: [1] },
+    { sql: 'CREATE TABLE temp_table (id INT)', args: [] },
+    { sql: 'DROP TABLE IF EXISTS temp_table', args: [] },
+    { sql: 'PRAGMA user_version = 2', args: [] },
+    { sql: 'PRAGMA user_version(2)', args: [] },
+    { sql: 'PRAGMA foreign_keys(1)', args: [] },
+    { sql: 'PRAGMA wal_checkpoint', args: [] },
+  ];
+
+  for (const { sql, args } of writeStatements) {
+    let callCount = 0;
+    const socketErr: any = new Error('fetch failed');
+    socketErr.code = 'UND_ERR_SOCKET';
+
+    const mockClient = {
+      execute: async () => {
+        callCount++;
+        throw socketErr;
+      },
+      transaction: async () => {},
+      close: () => {},
+    };
+
+    const db = openAsyncDatabase('file::memory:', undefined, mockClient as any);
+    await assert.rejects(
+      db.execute(sql, args as any),
+      /fetch failed/
+    );
+
+    assert.equal(
+      callCount,
+      1,
+      `Unsafe statement '${sql.split(' ')[0]}' must execute exactly once and never retry on connection error`
+    );
+  }
+});
+
+test('idempotent read statements retry on transient connection error and succeed on second attempt', async () => {
+  let attempts = 0;
+  const mockClient = {
+    execute: async ({ sql }: { sql: string }) => {
+      attempts++;
+      if (attempts === 1) {
+        const socketErr: any = new Error('fetch failed');
+        socketErr.code = 'UND_ERR_SOCKET';
+        throw socketErr;
+      }
+      return {
+        columns: ['val'],
+        columnTypes: ['TEXT'],
+        rows: [{ val: 'retried-success' }],
+        rowsAffected: 0,
+        lastInsertRowid: undefined,
+        toJSON: () => ({}),
+      };
+    },
+    transaction: async () => {},
+    close: () => {},
+  };
+
+  const db = openAsyncDatabase('file::memory:', undefined, mockClient as any);
+  const result = await db.execute('SELECT 1 FROM events');
+  assert.equal(attempts, 2, 'Read query should retry once on transient socket error');
+  assert.equal(result.rows[0].val, 'retried-success');
 });

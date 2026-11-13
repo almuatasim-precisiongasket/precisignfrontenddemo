@@ -12,8 +12,17 @@ import { fields, RequestError, text } from './requestValidation';
 import { changePassword, changePasswordAsync, hashPassword, registerAccount, resetPassword, resetPasswordAsync, revokeSession, sessionUser, sessionUserAsync, signIn, signInAsync, sessionLifetime, tokenHash } from './auth';
 import type { AsyncDatabase, AsyncQueryConnection } from './asyncDatabase';
 import { ownSignatureAsync } from './profile';
+import { MockEmailTransport, ResendEmailTransport, OutboxProcessor, type IEmailTransport } from './email';
 
-export interface ServerConfig { origin: string; secureCookies: boolean; now?: () => number; loginLimit?: number; }
+export interface ServerConfig {
+  origin: string;
+  secureCookies: boolean;
+  now?: () => number;
+  loginLimit?: number;
+  emailTransport?: IEmailTransport;
+  outboxProcessor?: OutboxProcessor;
+  autoStartWorker?: boolean;
+}
 
 const requestErrorMessages: Partial<Record<number, string>> = {
   400: 'Invalid request data or missing workflow.',
@@ -147,7 +156,15 @@ export async function createApp(db: DatabaseSync | AsyncDatabase, config: Server
   app.use('/api', workflowRoutes(db));
   app.use('/api', draftRoutes(db));
   app.use('/api', companyBrandingRoutes(db));
-  app.use('/api', requestRoutes(db));
+  const transport = config.emailTransport ?? (process.env.NODE_ENV === 'test' && !process.env.PRECISIGN_EMAIL_MODE
+    ? new MockEmailTransport()
+    : new ResendEmailTransport());
+  const outboxProcessor = config.outboxProcessor ?? new OutboxProcessor(db, transport, { now });
+  (app as any).outboxProcessor = outboxProcessor;
+  if (config.autoStartWorker) {
+    outboxProcessor.start();
+  }
+  app.use('/api', requestRoutes(db, outboxProcessor, now));
   app.use((_req, res) => { res.status(404).json({ error: 'Not found.' }); });
   app.use((error: { status?: number }, _req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (res.headersSent) { next(error); return; }

@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 
-export const schemaVersion = 9;
+export const schemaVersion = 11;
 
 function readSchemaVersion(db: DatabaseSync) {
   const version = (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
@@ -82,6 +82,49 @@ function migrate(db: Pick<DatabaseSync, 'exec'>, version: number) {
       CREATE VIEW account_profiles AS SELECT users.*, account_access.company_grants, account_access.form_grants,
         account_access.is_super_admin, account_access.is_disabled, account_access.must_change_password, account_access.role_override
         FROM users LEFT JOIN account_access ON account_access.user_id=users.id;`);
+  }
+  if (version < 10) {
+    db.exec(`CREATE TABLE IF NOT EXISTS email_outbox (
+      id TEXT PRIMARY KEY,
+      request_id TEXT NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      recipient_user_id TEXT NOT NULL,
+      recipient_email TEXT NOT NULL,
+      recipient_name TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      idempotency_key TEXT UNIQUE NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending', 'processing', 'accepted', 'delivered', 'failed', 'failed_unconfirmed')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 5,
+      last_error TEXT,
+      lease_token TEXT,
+      lease_expires_at INTEGER,
+      next_attempt_at INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      first_attempt_at INTEGER,
+      last_attempt_at INTEGER,
+      accepted_at INTEGER,
+      delivered_at INTEGER,
+      resend_id TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_email_outbox_poll ON email_outbox(status, next_attempt_at, lease_expires_at);
+    CREATE INDEX IF NOT EXISTS idx_email_outbox_request ON email_outbox(request_id);
+    ALTER TABLE account_access ADD COLUMN notification_email TEXT;
+    DROP VIEW account_profiles;
+    CREATE VIEW account_profiles AS SELECT users.*, account_access.company_grants, account_access.form_grants,
+      account_access.is_super_admin, account_access.is_disabled, account_access.must_change_password, account_access.role_override,
+      COALESCE(account_access.notification_email, users.email) AS notification_email
+      FROM users LEFT JOIN account_access ON account_access.user_id=users.id;`);
+  }
+  if (version < 11) {
+    db.exec(`CREATE TABLE IF NOT EXISTS request_counters (
+      company_id TEXT NOT NULL,
+      form_code TEXT NOT NULL,
+      year INTEGER NOT NULL,
+      last_seq INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (company_id, form_code, year)
+    );`);
   }
   if (version < schemaVersion) db.exec(`PRAGMA user_version = ${schemaVersion};`);
 }

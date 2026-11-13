@@ -4,15 +4,18 @@ import { once } from 'node:events';
 import { openDatabase } from './db';
 import { provisionUser, createSession, hashPassword } from './auth';
 import { randomUUID } from 'node:crypto';
-import { migrateAsyncDatabase, openAsyncDatabase } from './asyncDatabase';
+import { migrateAsyncDatabase, openAsyncDatabase, type AsyncDatabase } from './asyncDatabase';
+import { initRemoteTursoTestDb } from './tursoTestSafety';
 import { createApp } from './app';
 import { INITIAL_WORKFLOWS, INITIAL_REQUESTS } from '../src/data/seedData';
 import type { RequestRecord } from '../src/types';
 
 test('HTTP lifecycle enforces signatures, stages, revisions and correction history', async () => {
   const remoteUrl = process.env.PRECISIGN_TURSO_TEST_URL;
-  if (remoteUrl && new URL(remoteUrl).hostname !== 'precisign-test-muatasim.aws-ap-south-1.turso.io') throw new Error('Use the separate precisign-test database.');
-  const remote = remoteUrl ? openAsyncDatabase(remoteUrl, process.env.PRECISIGN_TURSO_TEST_TOKEN) : undefined;
+  let remote: AsyncDatabase | undefined;
+  if (remoteUrl) {
+    remote = await initRemoteTursoTestDb('requests test');
+  }
   const local = remote ? undefined : openDatabase(':memory:');
   const db = remote ?? local!;
   const execute = async (sql: string, ...args: (string | number)[]) => remote
@@ -33,10 +36,6 @@ test('HTTP lifecycle enforces signatures, stages, revisions and correction histo
     workflowTypes.add(type);
   };
   const workflowTypes = new Set<string>();
-  if (remote) {
-    await migrateAsyncDatabase(remote);
-    if ((await execute('SELECT 1 FROM workflows LIMIT 1')).length) throw new Error('Turso test database must have no existing workflows.');
-  }
   const ids: string[] = [];
   for (const [i, role] of ['Admin','General Manager','Director'].entries()) ids.push(await addUser({ email: `lifecycle${i}@example.test`, name: `Synthetic ${i}`, department: 'Test', companyId: 'PEW', role: role as any }));
   const workflow = { ...INITIAL_WORKFLOWS[0], stages: INITIAL_WORKFLOWS[0].stages.map((stage, i) => ({ ...stage, assignedUserId: ids[i+1] })) };

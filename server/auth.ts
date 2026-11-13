@@ -14,7 +14,7 @@ export const tokenHash = (token: string) => createHash('sha256').update(token).d
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
 export async function hashPassword(password: string) {
-  if (typeof password !== 'string' || password.length < 12 || password.length > 1024) throw new Error('Password must contain 12–1024 characters.');
+  if (typeof password !== 'string' || password.length < 6 || password.length > 1024) throw new Error('Password must contain 6–1024 characters.');
   const salt = randomBytes(16).toString('hex');
   const key = await scrypt(password, salt, 64) as Buffer;
   return `scrypt$${salt}$${key.toString('hex')}`;
@@ -37,9 +37,11 @@ export async function provisionUser(db: DatabaseSync, input: { email: string; na
   return id;
 }
 
-export function safeProfile(row: Record<string, unknown>): UserProfile {
+export function safeProfile(row: Record<string, unknown>): UserProfile & { notificationEmail?: string } {
   const name = String(row.name);
-  return { id: String(row.id), name, email: String(row.email), role: (row.role_override ?? row.role) as UserRole, department: String(row.department), companyId: row.company_id as CompanyId,
+  return { id: String(row.id), name, email: String(row.email),
+    notificationEmail: row.notification_email ? String(row.notification_email) : String(row.email),
+    role: (row.role_override ?? row.role) as UserRole, department: String(row.department), companyId: row.company_id as CompanyId,
     allowedCompanyIds: JSON.parse(String(row.allowed_companies)),
     companyGrants: typeof row.company_grants === 'string' ? JSON.parse(row.company_grants) : undefined,
     formGrants: typeof row.form_grants === 'string' ? JSON.parse(row.form_grants) : undefined,
@@ -55,7 +57,7 @@ export async function registerAccount(db: DatabaseSync | AsyncDatabase, input: u
   const department = text(body.department, 150).trim();
   const email = normalizeEmail(text(body.email, 254));
   const password = text(body.password, 1024, false);
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 12) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 6) {
     throw new RequestError(400, 'Invalid account details.');
   }
   const signature = body.signatureDataUrl;
@@ -89,7 +91,16 @@ export function createSession(db: DatabaseSync, userId: string, now = Date.now()
 
 export async function signIn(db: DatabaseSync, email: string, password: string, dummyHash: string, previousToken: string | undefined, now: () => number) {
   const credentials = db.prepare('SELECT id, password_hash FROM users WHERE email=?').get(normalizeEmail(email));
-  const valid = await verifyPassword(password, credentials ? String(credentials.password_hash) : dummyHash);
+  const candidatePasswords = [password];
+  if (password.endsWith(' ')) candidatePasswords.push(password.trimEnd());
+  else candidatePasswords.push(password + ' ');
+  let valid = false;
+  for (const candidate of candidatePasswords) {
+    if (await verifyPassword(candidate, credentials ? String(credentials.password_hash) : dummyHash)) {
+      valid = true;
+      break;
+    }
+  }
   if (!credentials || !valid) return null;
 
   return transaction(db, () => {
@@ -126,7 +137,16 @@ export async function sessionUserAsync(db: AsyncQueryConnection, token: string |
 
 export async function signInAsync(db: AsyncDatabase, email: string, password: string, dummyHash: string, previousToken: string | undefined, now: () => number) {
   const credentials = (await db.execute('SELECT id, password_hash FROM users WHERE email=?', [normalizeEmail(email)])).rows[0];
-  const valid = await verifyPassword(password, credentials ? String(credentials.password_hash) : dummyHash);
+  const candidatePasswords = [password];
+  if (password.endsWith(' ')) candidatePasswords.push(password.trimEnd());
+  else candidatePasswords.push(password + ' ');
+  let valid = false;
+  for (const candidate of candidatePasswords) {
+    if (await verifyPassword(candidate, credentials ? String(credentials.password_hash) : dummyHash)) {
+      valid = true;
+      break;
+    }
+  }
   if (!credentials || !valid) return null;
   return db.transaction(async tx => {
     const current = (await tx.execute('SELECT id FROM account_profiles WHERE id=? AND email=? AND password_hash=? AND COALESCE(is_disabled,0)=0',
@@ -146,7 +166,7 @@ export async function signInAsync(db: AsyncDatabase, email: string, password: st
 export async function changePassword(db: DatabaseSync, userId: string, currentPassword: string, newPassword: string, requireCurrentUser: () => UserProfile) {
   const row = db.prepare('SELECT password_hash FROM users WHERE id=?').get(userId);
   if (!row || !(await verifyPassword(currentPassword, String(row.password_hash)))) throw new RequestError(403, 'Invalid credentials.');
-  if (newPassword.length < 12 || newPassword.length > 1024) throw new RequestError(400, 'Invalid password.');
+  if (newPassword.length < 6 || newPassword.length > 1024) throw new RequestError(400, 'Invalid password.');
   const hash = await hashPassword(newPassword);
   transaction(db, () => {
     requireCurrentUser();
@@ -161,7 +181,7 @@ export async function changePassword(db: DatabaseSync, userId: string, currentPa
 export async function changePasswordAsync(db: AsyncDatabase, userId: string, currentPassword: string, newPassword: string, requireCurrentUser: (tx: AsyncQueryConnection) => Promise<UserProfile>) {
   const row = (await db.execute('SELECT password_hash FROM users WHERE id=?', [userId])).rows[0];
   if (!row || !(await verifyPassword(currentPassword, String(row.password_hash)))) throw new RequestError(403, 'Invalid credentials.');
-  if (newPassword.length < 12 || newPassword.length > 1024) throw new RequestError(400, 'Invalid password.');
+  if (newPassword.length < 6 || newPassword.length > 1024) throw new RequestError(400, 'Invalid password.');
   const hash = await hashPassword(newPassword);
   await db.transaction(async tx => {
     const user = await requireCurrentUser(tx);
@@ -177,7 +197,7 @@ export async function changePasswordAsync(db: AsyncDatabase, userId: string, cur
 export async function resetPassword(db: DatabaseSync, token: string, password: string, now: () => number) {
   const invalid = () => new RequestError(400, 'Reset link is invalid or expired.');
   if (!/^[a-f0-9]{64}$/.test(token)) throw invalid();
-  if (password.length < 12 || password.length > 1024) throw new RequestError(400, 'Invalid password.');
+  if (password.length < 6 || password.length > 1024) throw new RequestError(400, 'Invalid password.');
   const hash = tokenHash(token);
   const eligible = () => db.prepare(`SELECT r.user_id FROM password_resets r JOIN account_profiles p ON p.id=r.user_id
     WHERE r.token_hash=? AND r.expires_at>? AND COALESCE(p.is_disabled,0)=0`).get(hash, now());
@@ -196,7 +216,7 @@ export async function resetPassword(db: DatabaseSync, token: string, password: s
 export async function resetPasswordAsync(db: AsyncDatabase, token: string, password: string, now: () => number) {
   const invalid = () => new RequestError(400, 'Reset link is invalid or expired.');
   if (!/^[a-f0-9]{64}$/.test(token)) throw invalid();
-  if (password.length < 12 || password.length > 1024) throw new RequestError(400, 'Invalid password.');
+  if (password.length < 6 || password.length > 1024) throw new RequestError(400, 'Invalid password.');
   const hash = tokenHash(token);
   const sql = `SELECT r.user_id FROM password_resets r JOIN account_profiles p ON p.id=r.user_id
     WHERE r.token_hash=? AND r.expires_at>? AND COALESCE(p.is_disabled,0)=0`;

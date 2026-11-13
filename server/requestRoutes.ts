@@ -16,13 +16,28 @@ import { SUBMITTABLE_FORMS } from '../src/services/apiTypes';
 import { recordProcessing, processingLabels, processingRequiresSignature, financeHoldActions } from '../src/utils/routeProcessing';
 import { expenseEvidenceError, preservesExpenseReceipts } from '../src/utils/expenseEvidence';
 import { applySignerChoices } from '../src/utils/signingSelection';
+import {
+  buildSubmissionEmails,
+  buildNextActionEmail,
+  buildCompletionEmail,
+  buildReplacementActionEmail,
+  planTransitionNotification,
+  buildNotificationFromPlan,
+  enqueueOutboxSync,
+  enqueueOutboxAsync,
+  type OutboxProcessor,
+} from './email';
+import { allocateSequenceSync, allocateSequenceAsync, formTypeToPrefix } from './email/requestSequence';
 
-
-export function requestRoutes(db: DatabaseSync | AsyncDatabase) {
+export function requestRoutes(
+  db: DatabaseSync | AsyncDatabase,
+  outboxProcessor?: OutboxProcessor,
+  now: () => number = Date.now
+) {
   const router = Router();
   router.post('/requests', async (req, res, next) => {
     try {
-      const body = req.body; fields(body, ['companyId','formType','formData','attachments','comment','signatureDataUrl','expectedDraftRevision','expectedWorkflowVersion','signerChoices']);
+      const body = req.body; fields(body, ['companyId','formType','formData','attachments','comment','signatureDataUrl','expectedDraftRevision','expectedWorkflowVersion','signerChoices','emailNote']);
       const expectedDraft = body.expectedDraftRevision === undefined ? undefined : draftRevision(body.expectedDraftRevision);
       const combined = body.formType === 'Administrative & Payment Request';
       const it = body.formType === 'IT Request';
@@ -35,6 +50,7 @@ export function requestRoutes(db: DatabaseSync | AsyncDatabase) {
       if (!canUserStartForm(actor, companyId, body.formType)) throw new RequestError(403, 'Company or form access denied.');
       const data = form(body.formData, false, combined, it, financial, body.formType === 'R&D Initiative'); await bytes(body.signatureDataUrl, true);
       if (body.comment !== undefined) text(body.comment, 2000, false);
+      if (body.emailNote !== undefined) text(body.emailNote, 2000, false);
       const files = await attachments(body.attachments, actor.name);
       if (data.expenseClaim) {
         const evidenceError = expenseEvidenceError(data.expenseClaim, files);
@@ -44,7 +60,9 @@ export function requestRoutes(db: DatabaseSync | AsyncDatabase) {
       const companySql = 'SELECT name,logo_data_url FROM companies LEFT JOIN company_logos ON company_id=id WHERE id=?';
       const usersSql = 'SELECT * FROM account_profiles WHERE COALESCE(is_disabled,0)=0';
       const insertSql = 'INSERT INTO requests VALUES (?,?,?,?,?,?)';
-      function buildRecord(actor: UserProfile, row: Record<string, unknown> | undefined, company: Record<string, unknown> | undefined, users: UserProfile[]) {
+      const prefix = formTypeToPrefix(body.formType);
+      const year = new Date().getFullYear();
+      function buildRecord(actor: UserProfile, row: Record<string, unknown> | undefined, company: Record<string, unknown> | undefined, users: UserProfile[], displayId?: string) {
         if (!company) fail('Company not found.');
         if (!canUserStartForm(actor, companyId, body.formType)) throw new RequestError(403, 'Company or form access denied.');
         if (!row) fail('No workflow is configured for this company.');
@@ -63,35 +81,44 @@ export function requestRoutes(db: DatabaseSync | AsyncDatabase) {
           fail('The requester cannot also be an approver.');
         }
         if (!workflow.stages.length || workflow.stages.some((stage,index) => stage.isFinalApproval !== (index === workflow.stages.length - 1))) fail('Invalid final approver designation.');
-        const prefix = body.formType === 'R&D Initiative' ? 'RD' : it ? 'IT' : combined ? 'AP' : financial === 'cashVoucher' ? 'CV' : financial === 'expenseClaim' ? 'EC' : 'AW';
         const result = {
           ...createNewRequestRecord({
-            id: `${companyId}-${prefix}-${new Date().getFullYear()}-${randomUUID()}`,
+            id: `${companyId}-${prefix}-${year}-${randomUUID()}`,
             formType: body.formType,
-            formData: { ...data, companyId, companyName: `${companyId} - ${company!.name}`, companyLogoDataUrl: legacy ? undefined : (company!.logo_data_url as string | null) ?? undefined, requesterId: actor.id, requesterName: actor.name },
+            formData: { ...data, companyId, companyName: `${companyId} - ${company!.name}`, companyLogoDataUrl: legacy ? undefined : (company!.logo_data_url as string | null) ?? undefined, requesterId: actor.id, requesterName: actor.name, emailNote: body.emailNote },
             requester: actor, workflowConfig: workflow, users, attachments: files, comment: body.comment, signatureDataUrl: body.signatureDataUrl,
           }),
+          displayId,
+          emailNote: body.emailNote,
           omittedSigningSteps: selection.omittedSigningSteps, revision: 1,
         };
         return result;
       }
       const record = 'prepare' in db ? transaction(db, () => {
         const actor = res.locals.requireCurrentUser();
+        const allUsers = db.prepare(usersSql).all().map(safeProfile);
+        const displayId = allocateSequenceSync(db, companyId, prefix, year);
         const result = buildRecord(actor, db.prepare(workflowSql).get(companyId, body.formType),
-          db.prepare(companySql).get(companyId), db.prepare(usersSql).all().map(safeProfile));
+          db.prepare(companySql).get(companyId), allUsers, displayId);
         db.prepare(insertSql).run(result.id, result.companyId, actor.id, result.status, 1, JSON.stringify(result));
         if (expectedDraft !== undefined) writeDraft(db, actor.id, result.companyId, expectedDraft, null);
+        const emails = buildSubmissionEmails(result, actor, allUsers, now(), body.emailNote);
+        enqueueOutboxSync(db, emails);
         return result;
       }) : await db.transaction(async tx => {
         const actor = await res.locals.requireCurrentUserAsync(tx);
         const workflow = (await tx.execute(workflowSql, [companyId, body.formType])).rows[0];
         const company = (await tx.execute(companySql, [companyId])).rows[0];
         const users = (await tx.execute(usersSql)).rows.map(safeProfile);
-        const result = buildRecord(actor, workflow, company, users);
+        const displayId = await allocateSequenceAsync(tx, companyId, prefix, year);
+        const result = buildRecord(actor, workflow, company, users, displayId);
         await tx.execute(insertSql, [result.id, result.companyId, actor.id, result.status, 1, JSON.stringify(result)]);
         if (expectedDraft !== undefined) await writeDraftAsync(tx, actor.id, result.companyId, expectedDraft, null);
+        const emails = buildSubmissionEmails(result, actor, users, now(), body.emailNote);
+        await enqueueOutboxAsync(tx, emails);
         return result;
       });
+      outboxProcessor?.trigger().catch(() => {});
       res.status(201).json(record);
     } catch (error) { next(error); }
   });
@@ -120,10 +147,14 @@ export function requestRoutes(db: DatabaseSync | AsyncDatabase) {
       const lookup = 'SELECT * FROM requests WHERE id=?';
       const replacement = 'SELECT * FROM account_profiles WHERE id=? AND COALESCE(is_disabled,0)=0';
       const update = 'UPDATE requests SET status=?,revision=?,record=? WHERE id=? AND revision=?';
-      function nextRecord(actor: UserProfile, row: Record<string, unknown> | undefined, targetRow?: Record<string, unknown>) {
-        if (!row || !canUserAccessCompany(actor, row.company_id as any)) throw new RequestError(404, 'Request not found.');
-        const request = JSON.parse(String(row.record)) as RequestRecord & { attachmentVersions?: { version: number; attachments: AttachmentItem[] }[] };
-        if (!canReadPreciRoute(actor,request)) throw new RequestError(404,'Request not found.');
+
+      function transitionRecord(
+        actor: UserProfile,
+        row: Record<string, unknown>,
+        request: RequestRecord & { attachmentVersions?: { version: number; attachments: AttachmentItem[] }[] },
+        targetRow?: Record<string, unknown>
+      ) {
+        if (!canReadPreciRoute(actor, request)) throw new RequestError(404, 'Request not found.');
         if (Number(row.revision) !== body.expectedRevision) throw new RequestError(409, 'Request changed. Refresh and review again.');
         if (action === 'resubmit' && request.formType === 'Expense Claim' && files && request.formData.expenseClaim
           && !preservesExpenseReceipts(request.formData.expenseClaim, request.attachments, files)) {
@@ -152,26 +183,58 @@ export function requestRoutes(db: DatabaseSync | AsyncDatabase) {
         if (record.pendingReplacement && (record.status !== 'Pending Approval' || ['Approved','Bypassed','Rejected'].includes(record.approvalSteps.find(step => step.stageId === record.pendingReplacement!.stageId)?.status || ''))) record.pendingReplacement = undefined;
         return record;
       }
-      function updateArgs(record: ReturnType<typeof nextRecord>) {
+      function updateArgs(record: ReturnType<typeof transitionRecord>) {
         return [record.status, record.revision, JSON.stringify(record), record.id, body.expectedRevision];
       }
       const updated = 'prepare' in db ? transaction(db, () => {
         const actor = res.locals.requireCurrentUser();
-        const row = db.prepare(lookup).get(req.params.id);
-        const target = action === 'replace' ? db.prepare(replacement).get(body.newUserId) : undefined;
-        const record = nextRecord(actor, row, target);
+        const row = db.prepare(lookup).get(req.params.id) as Record<string, unknown> | undefined;
+        if (!row || !canUserAccessCompany(actor, row.company_id as any)) throw new RequestError(404, 'Request not found.');
+        const previousRecord = JSON.parse(String(row.record)) as RequestRecord & { attachmentVersions?: { version: number; attachments: AttachmentItem[] }[] };
+        const target = action === 'replace' ? db.prepare(replacement).get(body.newUserId) as Record<string, unknown> | undefined : undefined;
+        const record = transitionRecord(actor, row, previousRecord, target);
         const saved = db.prepare(update).run(...updateArgs(record));
         if (saved.changes !== 1) throw new RequestError(409, 'Request changed. Refresh and review again.');
+
+        const getUser = (userId: string) => {
+          const u = db.prepare('SELECT id, name, email, notification_email, COALESCE(is_disabled,0) AS is_disabled FROM account_profiles WHERE id=?').get(userId) as any;
+          return u ? { id: String(u.id), name: String(u.name), email: String(u.notification_email || u.email), isDisabled: u.is_disabled === 1 } : undefined;
+        };
+
+        const plan = planTransitionNotification(action, record, previousRecord, actor.id, body);
+        if (plan) {
+          const user = getUser(plan.userId);
+          const item = buildNotificationFromPlan(plan, user, record, previousRecord, now());
+          if (item) enqueueOutboxSync(db, [item]);
+        }
+
         return record;
       }) : await db.transaction(async tx => {
         const actor = await res.locals.requireCurrentUserAsync(tx);
-        const row = (await tx.execute(lookup, [req.params.id])).rows[0];
-        const target = action === 'replace' ? (await tx.execute(replacement, [body.newUserId])).rows[0] : undefined;
-        const record = nextRecord(actor, row, target);
+        const row = (await tx.execute(lookup, [req.params.id])).rows[0] as Record<string, unknown> | undefined;
+        if (!row || !canUserAccessCompany(actor, row.company_id as any)) throw new RequestError(404, 'Request not found.');
+        const previousRecord = JSON.parse(String(row.record)) as RequestRecord & { attachmentVersions?: { version: number; attachments: AttachmentItem[] }[] };
+        const target = action === 'replace' ? (await tx.execute(replacement, [body.newUserId])).rows[0] as Record<string, unknown> | undefined : undefined;
+        const record = transitionRecord(actor, row, previousRecord, target);
         const saved = await tx.execute(update, updateArgs(record));
         if (saved.rowsAffected !== 1) throw new RequestError(409, 'Request changed. Refresh and review again.');
+
+        const getUserAsync = async (userId: string) => {
+          const res = await tx.execute('SELECT id, name, email, notification_email, COALESCE(is_disabled,0) AS is_disabled FROM account_profiles WHERE id=?', [userId]);
+          const u = res.rows[0] as any;
+          return u ? { id: String(u.id), name: String(u.name), email: String(u.notification_email || u.email), isDisabled: u.is_disabled === 1 } : undefined;
+        };
+
+        const plan = planTransitionNotification(action, record, previousRecord, actor.id, body);
+        if (plan) {
+          const user = await getUserAsync(plan.userId);
+          const item = buildNotificationFromPlan(plan, user, record, previousRecord, now());
+          if (item) await enqueueOutboxAsync(tx, [item]);
+        }
+
         return record;
       });
+      outboxProcessor?.trigger().catch(() => {});
       res.json(updated);
     } catch (error) { next(error); }
   });

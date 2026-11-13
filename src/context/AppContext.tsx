@@ -80,7 +80,8 @@ interface AppContextType {
     attachments?: AttachmentItem[],
     comment?: string,
     signatureDataUrl?: string,
-    signerChoices?: SubmitInput['signerChoices']
+    signerChoices?: SubmitInput['signerChoices'],
+    emailNote?: string
   ) => Promise<{ success: boolean; newId?: string; error?: string; routeChanged?: boolean }>;
   approveRequest: (
     requestId: string,
@@ -391,7 +392,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
   }, [initialLoaded, activeView, selectedRequestId, currentUserId, actionRepository, currentUser, routeRetry]);
 
   const actionFailure = (error: unknown) => ({ success: false, error: error instanceof Error ? error.message : 'Could not save request.' });
-  const submitNewRequest = async (formData: AdminWorkFormData, attachments: AttachmentItem[] = [], comment?: string, signatureDataUrl?: string, signerChoices?: SubmitInput['signerChoices']) => {
+  const submitNewRequest = async (formData: AdminWorkFormData, attachments: AttachmentItem[] = [], comment?: string, signatureDataUrl?: string, signerChoices?: SubmitInput['signerChoices'], emailNote?: string) => {
     const validation = validateOriginatingCompany(selectedScope, formData.companyId, currentUser.companyId);
     if (!validation.isValid || !validation.companyId) return { success: false, error: validation.error };
     try {
@@ -411,7 +412,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode; apiData?: { boot
         signerChoices,
         expectedWorkflowVersion: legacy ? undefined : workflow?.version,
         formData: { dateOfRequest: formData.dateOfRequest, department: formData.department, priority: formData.priority, workDescription: formData.workDescription, documents: formData.documents, administrativePayment: formData.administrativePayment, itRequest: formData.itRequest, cashVoucher: formData.cashVoucher, expenseClaim: formData.expenseClaim, rnd: formData.rnd },
-        attachments, comment, signatureDataUrl: signatureDataUrl || '' };
+        attachments, comment, signatureDataUrl: signatureDataUrl || '',
+        emailNote: emailNote || formData.emailNote };
       const record = draftCoordinator && legacy
         ? await draftCoordinator.submit(validation.companyId, currentUserId, input)
         : await actionRepository.submit(input);

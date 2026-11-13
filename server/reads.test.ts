@@ -5,13 +5,16 @@ import { openDatabase } from './db';
 import { createApp } from './app';
 import { createSession, provisionUser, hashPassword, tokenHash } from './auth';
 import { randomUUID, randomBytes } from 'node:crypto';
-import { migrateAsyncDatabase, openAsyncDatabase } from './asyncDatabase';
+import { migrateAsyncDatabase, openAsyncDatabase, type AsyncDatabase } from './asyncDatabase';
+import { initRemoteTursoTestDb } from './tursoTestSafety';
 import type { CompanyId, UserRole } from '../src/types/index';
 
 test('read API enforces company permissions on every list, detail and bootstrap', async () => {
   const url = process.env.PRECISIGN_TURSO_TEST_URL;
-  if (url && new URL(url).hostname !== 'precisign-test-muatasim.aws-ap-south-1.turso.io') throw new Error('Use the separate precisign-test database.');
-  const remote = url ? openAsyncDatabase(url, process.env.PRECISIGN_TURSO_TEST_TOKEN) : undefined;
+  let remote: AsyncDatabase | undefined;
+  if (url) {
+    remote = await initRemoteTursoTestDb('reads test');
+  }
   const local = remote ? undefined : openDatabase(':memory:');
   const db = remote ?? local!;
   const userIds: string[] = [];
@@ -36,10 +39,6 @@ test('read API enforces company permissions on every list, detail and bootstrap'
   };
   let server: ReturnType<Awaited<ReturnType<typeof createApp>>['listen']> | undefined;
   try {
-  if (remote) {
-    await migrateAsyncDatabase(remote);
-    if ((await remote.execute('SELECT 1 FROM requests UNION ALL SELECT 1 FROM workflows LIMIT 1')).rows.length) throw new Error('The Turso test database must have no requests or workflows.');
-  }
   const cases: { role: UserRole; allowedCompanyIds?: CompanyId[]; isGroupAdmin?: boolean; expected: CompanyId[] }[] = [
     { role: 'Admin', expected: ['PEW'] },
     { role: 'HR', allowedCompanyIds: ['ICCL'], expected: ['ICCL', 'PEW'] },

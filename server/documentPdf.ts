@@ -11,7 +11,7 @@ export async function renderDocumentPdf(origin: string, requestId: string, versi
   const browser = await chromium.launch({
     executablePath,
     channel: !executablePath && !existsSync(chromium.executablePath()) && process.platform === 'win32' ? 'msedge' : undefined,
-    timeout: 10000,
+    timeout: 25000,
   });
   try {
     const context = await browser.newContext({ serviceWorkers: 'block' });
@@ -21,7 +21,7 @@ export async function renderDocumentPdf(origin: string, requestId: string, versi
       return destination.origin === origin ? route.continue() : route.abort();
     });
     const page = await context.newPage();
-    page.setDefaultTimeout(10000);
+    page.setDefaultTimeout(25000);
     await page.goto(url.href);
     const ready = page.locator('[data-pdf-ready]');
     await ready.or(page.locator('[data-pdf-error]')).waitFor();

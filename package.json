@@ -16,7 +16,7 @@
     "backup": "tsx server/backup.ts",
     "restore": "tsx server/backup.ts restore",
     "test:startup": "tsx --test server/startup.test.ts",
-    "test:server:turso": "node --import ./server/requireTursoTestEnv.mjs --import tsx --test --test-concurrency=1 server/accountAdmin.test.ts server/reads.test.ts server/requests.test.ts",
+    "test:server:turso": "node --import ./server/requireTursoTestEnv.mjs --import tsx --test --test-concurrency=1 server/accountAdmin.test.ts server/reads.test.ts server/requests.test.ts server/tursoRemaining.test.ts",
     "test:backup": "tsx --test server/backup.test.ts",
     "dev:server": "tsx server/index.ts",
     "provision:user": "tsx server/provision-user.ts",
@@ -46,7 +46,9 @@
     "pdf-lib": "1.17",
     "playwright-core": "1.65.0",
     "react": "^19.0.1",
+    "react-doctor": "^0.9.22",
     "react-dom": "^19.0.1",
+    "resend": "^6.38.0",
     "sharp": "^0.35.5",
     "vite": "^8.3.0"
   },

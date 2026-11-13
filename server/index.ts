@@ -26,7 +26,11 @@ if (databaseMode === 'turso') {
   mkdirSync(dirname(path), { recursive: true });
   db = openDatabase(path);
 }
-const app = await createApp(db, { origin, secureCookies: production });
+const app = await createApp(db, { origin, secureCookies: production, autoStartWorker: true });
+const shutdown = (server: any) => () => {
+  (app as any).outboxProcessor?.stop();
+  server.close(() => { db.close(); process.exit(0); });
+};
 if (production) {
   if (process.env.VITE_DATA_MODE !== 'api') throw new Error('Production requires VITE_DATA_MODE=api at build and start.');
   const dist = resolve('dist');
@@ -37,8 +41,8 @@ if (production) {
   site.use(express.static(dist));
   site.get('*', (_req,res) => res.sendFile(resolve(dist,'index.html')));
   const server = site.listen(port,'127.0.0.1',()=>console.log(`PreciSign listening on http://127.0.0.1:${port}`));
-  for (const signal of ['SIGINT','SIGTERM'] as const) process.on(signal,()=>server.close(()=>{db.close();process.exit(0);}));
+  for (const signal of ['SIGINT','SIGTERM'] as const) process.on(signal, shutdown(server));
 } else {
-const server = app.listen(port, '127.0.0.1', () => console.log(`PreciSign API listening on http://127.0.0.1:${port}`));
-for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => server.close(() => { db.close(); process.exit(0); }));
+  const server = app.listen(port, '127.0.0.1', () => console.log(`PreciSign API listening on http://127.0.0.1:${port}`));
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, shutdown(server));
 }
